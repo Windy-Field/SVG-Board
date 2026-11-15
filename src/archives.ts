@@ -1,10 +1,13 @@
 import { parseDocument } from "./document";
 import { createDocument } from "./model";
 import type { BoardDocument } from "./types";
+import { archiveContent } from "./archive-content";
+import { createFlowTemplate, createGeometryTemplate } from "./templates";
 
 const ARCHIVE_KEY = "svg-board-archives-v1";
 const ACTIVE_KEY = "svg-board-active-archive";
 const ARCHIVE_LIMIT = 40;
+const SEEDED_KEY = "svg-board-builtin-archives-v1";
 
 /** 一个本地存档有独立编号，重命名作品不会改变存档身份 */
 export interface Archive {
@@ -20,10 +23,10 @@ export class Archives {
   /** 读取并校验所有存档，坏数据会明确报错，避免覆盖原内容 */
   constructor() {
     const saved = localStorage.getItem(ARCHIVE_KEY);
-    if (saved === null) {
-      return;
+    let values: unknown = [];
+    if (saved !== null) {
+      values = JSON.parse(saved);
     }
-    const values: unknown = JSON.parse(saved);
     if (!Array.isArray(values) || values.length > ARCHIVE_LIMIT) {
       throw new Error("存档列表损坏");
     }
@@ -40,10 +43,30 @@ export class Archives {
       this.items.push({ id: value.id, document: parseDocument(JSON.stringify(value.document)) });
     }
     this.active = localStorage.getItem(ACTIVE_KEY) || "";
+    this.removeDuplicates();
+  }
+
+  /** 首次写入两份内置作品，之后删除作品也不会在刷新时重新出现 */
+  seedBuiltins(): void {
+    if (localStorage.getItem(SEEDED_KEY) !== null) {
+      return;
+    }
+    const active = this.active;
+    this.create(createFlowTemplate());
+    this.create(createGeometryTemplate());
+    this.active = active;
+    this.persist();
+    localStorage.setItem(SEEDED_KEY, "true");
   }
 
   /** 创建存档并设为当前作品，返回独立副本给画布使用 */
   create(document: BoardDocument): BoardDocument {
+    const key = archiveContent(document);
+    for (const item of this.items) {
+      if (archiveContent(item.document) === key) {
+        return this.open(item.id);
+      }
+    }
     if (this.items.length >= ARCHIVE_LIMIT) {
       throw new Error("最多保留 40 个存档");
     }
@@ -62,7 +85,29 @@ export class Archives {
       return;
     }
     item.document = structuredClone(document);
+    this.removeDuplicates();
     this.persist();
+  }
+
+  /** 保留第一份相同内容，当前作品若重复则转到保留的存档 */
+  private removeDuplicates(): void {
+    const unique: Archive[] = [];
+    const keys = new Map<string, string>();
+    for (const item of this.items) {
+      const key = archiveContent(item.document);
+      const existing = keys.get(key);
+      if (existing === undefined) {
+        unique.push(item);
+        keys.set(key, item.id);
+      } else if (this.active === item.id) {
+        this.active = existing;
+      }
+    }
+    const changed = this.items.length !== unique.length;
+    this.items = unique;
+    if (changed) {
+      this.persist();
+    }
   }
 
   /** 读取指定存档，不向调用者暴露内部保存的对象 */
@@ -93,9 +138,9 @@ export class Archives {
       this.active = "";
       return this.create(createDocument());
     }
-    this.active = this.items[0].id;
+    this.active = this.items[this.items.length - 1].id;
     this.persist();
-    return structuredClone(this.items[0].document);
+    return structuredClone(this.items[this.items.length - 1].document);
   }
 
   /** 通过编号查找存档 */

@@ -97,6 +97,10 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
     shape.strokeWidth = value;
   } else if (property === "fontSize") {
     shape.fontSize = value;
+  } else if (property === "cornerRadius" && shape.kind === "rect") {
+    shape.cornerRadius = value;
+  } else if (property === "pointRadius" && shape.kind === "point") {
+    shape.pointRadius = value;
   } else {
     return false;
   }
@@ -201,7 +205,7 @@ function colorField(label: string, property: string, value: string): string {
   );
 }
 
-/** 显示无选区时的画板属性，不放置额外的宣传或使用说明 */
+/** 无选区时显示画板尺寸和背景 */
 function renderBoardProperties(document: BoardDocument): string {
   return (
     '<section class="property-section"><div class="section-title"><h2>画板</h2><span>01</span></div><div class="property-grid">' +
@@ -248,6 +252,14 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
   markup = markup + numberField("透明度", "opacity", shape.opacity, 0, 1, false);
   markup = markup + '</div></section><section class="property-section"><h2>外观</h2>';
   markup = markup + colorField("描边 / 文字", "stroke", shape.stroke);
+  if (shape.kind === "rect") {
+    markup =
+      markup + numberField("圆角", "cornerRadius", shape.cornerRadius, 0, 50000, shape.locked);
+  }
+  if (shape.kind === "point") {
+    markup =
+      markup + numberField("点半径", "pointRadius", shape.pointRadius, 1, 5000, shape.locked);
+  }
   if (!isLine(shape) && shape.kind !== "pencil" && shape.kind !== "text") {
     markup = markup + colorField("填充", "fill", shape.fill);
     markup = markup + checkboxField("无填充", "noFill", shape.fill === "none");

@@ -8,7 +8,6 @@ import { createSvg, downloadBlob, exportPng, getFileName, openProject, saveProje
 import { updateRelations } from "./geometry";
 import { applyProperty, renderLayers, renderProperties } from "./inspector";
 import { createDocument, findShape, History, isDependent, moveShape } from "./model";
-import { createFlowTemplate, createGeometryTemplate } from "./templates";
 import { getElement, getInput, isTool, mountInterface, refreshIcons } from "./ui";
 import type { BoardDocument, RelationKind, Shape, Tool } from "./types";
 import { Archives } from "./archives";
@@ -17,6 +16,7 @@ import { updateDescription } from "./description";
 import { setSidebar } from "./motion";
 import { prepareDocument } from "./content";
 import { createFabricShape } from "./fabric-shapes";
+import { addPointLabel } from "./point-labels";
 
 const MESSAGE_DURATION = 6000;
 const AUTOSAVE_DELAY = 300;
@@ -69,7 +69,7 @@ function loadInitialDocument(): BoardDocument {
   } catch (error) {
     notify("无法自动恢复：" + errorMessage(error));
   }
-  return createFlowTemplate();
+  return createDocument();
 }
 
 /** 延迟自动保存，避免拖动过程反复写入浏览器存储 */
@@ -220,9 +220,31 @@ function editText(id: string): void {
   if (board.readOnly) {
     return;
   }
-  const shape = findShape(board.document, id);
+  let shape = findShape(board.document, id);
   if (shape === undefined || shape.locked) {
     return;
+  }
+  if (shape.kind === "point") {
+    let label: Shape | null = null;
+    for (const candidate of board.document.shapes) {
+      if (
+        candidate.kind === "text" &&
+        candidate.relation.kind === "label" &&
+        candidate.relation.sources[0] === shape.id
+      ) {
+        label = candidate;
+        break;
+      }
+    }
+    if (label === null) {
+      shape.text = shape.name;
+      label = addPointLabel(board.document, shape);
+    }
+    if (label === null || label.locked) {
+      return;
+    }
+    shape = label;
+    id = label.id;
   }
   textTarget = id;
   const input = getElement("text-value");
@@ -399,10 +421,6 @@ async function executeAction(action: string): Promise<void> {
     board.setReadOnly(!board.readOnly);
     getElement("readonly-button").setAttribute("aria-pressed", String(board.readOnly));
     refreshPanels();
-  } else if (action === "template-flow") {
-    createReferenceArchive(createFlowTemplate());
-  } else if (action === "template-geometry") {
-    createReferenceArchive(createGeometryTemplate());
   } else if (action === "undo" || action === "redo") {
     let snapshot: string | null = null;
     if (action === "redo") {
@@ -533,6 +551,7 @@ function executeObjectAction(action: string): void {
     return;
   } else if (action.startsWith("construct-")) {
     const shape = constructShape(board.document, selected, getRelationKind(action));
+    addPointLabel(board.document, shape);
     board.selectedIds = [shape.id];
   } else if (
     action === "align-left" ||
@@ -673,8 +692,11 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
       distance = 10;
     }
     for (const shape of board.getSelectedShapes()) {
-      if (shape.locked || isDependent(shape)) {
+      if (shape.locked || (isDependent(shape) && shape.kind !== "text")) {
         continue;
+      }
+      if (shape.relation.kind === "label") {
+        shape.relation = { kind: "none", sources: [] };
       }
       if (key === "arrowleft") {
         moveShape(shape, -distance, 0);
@@ -728,9 +750,10 @@ if (window.matchMedia("(max-width: 45rem)").matches) {
 }
 archives = new Archives();
 const initial = loadInitialDocument();
-if (archives.items.length === 0) {
+if (archives.find(archives.active) === undefined) {
   archives.create(initial);
 }
+archives.seedBuiltins();
 board = new BoardCanvas(getElement("canvas-host"), initial, {
   changed: commit,
   selected: refreshPanels,
@@ -862,16 +885,6 @@ function requestDeleteArchive(id: string): void {
   deleteArchiveId = id;
   getElement("delete-archive-name").textContent = "删除「" + item.document.name + "」？";
   getDialog("delete-dialog").showModal();
-}
-
-/** 从参考图新建独立存档，先保留当前作品，避免切换示例覆盖原存档 */
-function createReferenceArchive(document: BoardDocument): void {
-  saveLocal();
-  const next = archives.create(document);
-  board.setDocument(next);
-  history.reset(next);
-  board.fit();
-  commit();
 }
 
 /** 更新选区上方的文字配置，不重建正在输入的控件 */

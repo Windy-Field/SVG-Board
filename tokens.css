@@ -12,6 +12,9 @@
   --color-focus: oklch(45% 0.2 260);
   --color-success: oklch(45% 0.1 160);
   --color-error: oklch(48% 0.18 25);
+  --color-danger: #b42318;
+  --color-danger-hover: #912018;
+  --color-danger-subtle: #fff0ee;
   --color-backdrop: oklch(20% 0.01 250 / 0.3);
   --font-body: "Microsoft YaHei", "PingFang SC", sans-serif;
   --font-display: "Trebuchet MS", "Microsoft YaHei", sans-serif;

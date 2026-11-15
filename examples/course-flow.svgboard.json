@@ -6,13 +6,15 @@
   "height": 800,
   "shapes": [
     {
-      "id": "d8fb0f22-e230-4bb1-b72f-1a5fc2cb9ce1",
+      "id": "01d9309e-4ac3-425d-b644-d7f1b6d602f1",
       "kind": "text",
       "name": "课程作业提交流程",
       "x": 160,
       "y": 95,
       "width": 760,
       "height": 52,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -42,13 +44,15 @@
       }
     },
     {
-      "id": "194bd268-a369-4123-bcd2-e70764debc6a",
+      "id": "1f0d4b20-cffb-4824-b668-6152b3ea129c",
       "kind": "ellipse",
       "name": "开始",
       "x": 160,
       "y": 230,
       "width": 140,
       "height": 64,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#e9f6ee",
@@ -78,13 +82,15 @@
       }
     },
     {
-      "id": "053cd6b3-1133-4c64-8220-3156a0f45662",
+      "id": "5523b622-5394-4fe6-bdb9-5e74542d1c67",
       "kind": "rect",
       "name": "准备作业材料",
       "x": 370,
       "y": 230,
       "width": 180,
       "height": 64,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#eaf1ff",
@@ -114,13 +120,15 @@
       }
     },
     {
-      "id": "ddd3a0d0-526c-40fb-a545-2dced3cc0bb8",
+      "id": "214bb762-42f4-4403-aae6-3575ae81fe74",
       "kind": "diamond",
       "name": "材料完整？",
       "x": 640,
       "y": 210,
       "width": 180,
       "height": 104,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#fff6dc",
@@ -150,13 +158,15 @@
       }
     },
     {
-      "id": "909ca203-2a1a-4f84-b92b-4ca35cb226c0",
+      "id": "bbeb5717-4911-4375-b8fa-1b9f0ad1a731",
       "kind": "rect",
       "name": "提交作业",
       "x": 910,
       "y": 230,
       "width": 160,
       "height": 64,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#eaf1ff",
@@ -186,13 +196,15 @@
       }
     },
     {
-      "id": "95250de4-1508-4ffb-9bc6-6d64458b2ed5",
+      "id": "9766b2d4-0ca3-4646-83b3-720e60598ebd",
       "kind": "rect",
       "name": "补充材料",
       "x": 640,
       "y": 440,
       "width": 180,
       "height": 64,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#fceeee",
@@ -222,13 +234,15 @@
       }
     },
     {
-      "id": "22a8774a-ecd2-4d4a-a611-cf0b03c00f9b",
+      "id": "6fc51cf4-9b42-4753-a384-728a4c788dd4",
       "kind": "ellipse",
       "name": "完成",
       "x": 920,
       "y": 440,
       "width": 140,
       "height": 64,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#e9f6ee",
@@ -258,13 +272,15 @@
       }
     },
     {
-      "id": "d8fe770c-8eaa-463e-aaba-8e79d2d25477",
+      "id": "ddae931c-059f-47cd-9d99-1629c2cd7a4f",
       "kind": "connector",
       "name": "开始 → 准备作业材料",
       "x": 300,
       "y": 262,
       "width": 70,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#64748b",
       "fill": "none",
@@ -291,19 +307,21 @@
       "relation": {
         "kind": "connector",
         "sources": [
-          "194bd268-a369-4123-bcd2-e70764debc6a",
-          "053cd6b3-1133-4c64-8220-3156a0f45662"
+          "1f0d4b20-cffb-4824-b668-6152b3ea129c",
+          "5523b622-5394-4fe6-bdb9-5e74542d1c67"
         ]
       }
     },
     {
-      "id": "e52ea431-f1b7-49aa-b4e0-f87a68321259",
+      "id": "b30625e0-02fb-493c-b93c-5b1e58a22b7d",
       "kind": "connector",
       "name": "准备作业材料 → 材料完整？",
       "x": 550,
       "y": 262,
       "width": 90,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#64748b",
       "fill": "none",
@@ -330,19 +348,21 @@
       "relation": {
         "kind": "connector",
         "sources": [
-          "053cd6b3-1133-4c64-8220-3156a0f45662",
-          "ddd3a0d0-526c-40fb-a545-2dced3cc0bb8"
+          "5523b622-5394-4fe6-bdb9-5e74542d1c67",
+          "214bb762-42f4-4403-aae6-3575ae81fe74"
         ]
       }
     },
     {
-      "id": "69d80027-28a9-484e-9680-9aeb55d4031f",
+      "id": "57b8611a-8f62-4f77-86cf-e217180dd444",
       "kind": "connector",
       "name": "材料完整？ → 提交作业",
       "x": 820,
       "y": 262,
       "width": 90,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#64748b",
       "fill": "none",
@@ -369,19 +389,21 @@
       "relation": {
         "kind": "connector",
         "sources": [
-          "ddd3a0d0-526c-40fb-a545-2dced3cc0bb8",
-          "909ca203-2a1a-4f84-b92b-4ca35cb226c0"
+          "214bb762-42f4-4403-aae6-3575ae81fe74",
+          "bbeb5717-4911-4375-b8fa-1b9f0ad1a731"
         ]
       }
     },
     {
-      "id": "bf059299-391f-4f92-b2b0-f6bc3ae19a50",
+      "id": "ea7896aa-892e-4223-96ba-c1e2af273847",
       "kind": "connector",
       "name": "材料完整？ → 补充材料",
       "x": 730,
       "y": 314,
       "width": 0,
       "height": 126,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#64748b",
       "fill": "none",
@@ -408,19 +430,21 @@
       "relation": {
         "kind": "connector",
         "sources": [
-          "ddd3a0d0-526c-40fb-a545-2dced3cc0bb8",
-          "95250de4-1508-4ffb-9bc6-6d64458b2ed5"
+          "214bb762-42f4-4403-aae6-3575ae81fe74",
+          "9766b2d4-0ca3-4646-83b3-720e60598ebd"
         ]
       }
     },
     {
-      "id": "72d1348f-5ead-4c1a-86e6-28f92f2e3de8",
+      "id": "c9e71a11-44e3-45f1-802d-5c2744553f13",
       "kind": "connector",
       "name": "补充材料 → 准备作业材料",
       "x": 640,
       "y": 472,
       "width": -180,
       "height": -178,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#64748b",
       "fill": "none",
@@ -450,13 +474,15 @@
       }
     },
     {
-      "id": "8f0c4025-99f6-45ff-96f7-3262fa976c4a",
+      "id": "7cff80cc-49ce-4f72-8505-0d4cf469b884",
       "kind": "connector",
       "name": "提交作业 → 完成",
       "x": 990,
       "y": 294,
       "width": 0,
       "height": 146,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#64748b",
       "fill": "none",
@@ -483,8 +509,8 @@
       "relation": {
         "kind": "connector",
         "sources": [
-          "909ca203-2a1a-4f84-b92b-4ca35cb226c0",
-          "22a8774a-ecd2-4d4a-a611-cf0b03c00f9b"
+          "bbeb5717-4911-4375-b8fa-1b9f0ad1a731",
+          "6fc51cf4-9b42-4753-a384-728a4c788dd4"
         ]
       }
     }

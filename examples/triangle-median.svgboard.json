@@ -6,13 +6,15 @@
   "height": 800,
   "shapes": [
     {
-      "id": "227f16f9-b874-4575-82db-e4d1ec1b7620",
+      "id": "4c81469b-b9fd-4ee7-82d1-1ca9ac697550",
       "kind": "text",
       "name": "三角形与中线",
       "x": 180,
       "y": 90,
       "width": 700,
       "height": 50,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -42,13 +44,15 @@
       }
     },
     {
-      "id": "f500bfe6-73c5-4d89-954b-3ec68e62edff",
+      "id": "a677f57d-c6ca-4b2a-b6db-e3b76870e091",
       "kind": "point",
       "name": "A",
       "x": 570,
       "y": 240,
       "width": 0,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#ffffff",
@@ -78,13 +82,15 @@
       }
     },
     {
-      "id": "0feb41c0-785b-4dd2-b1cd-2033e146cfd3",
+      "id": "bfe693f2-fdc0-4963-9152-402af2afcf01",
       "kind": "point",
       "name": "B",
       "x": 290,
       "y": 570,
       "width": 0,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#ffffff",
@@ -114,13 +120,15 @@
       }
     },
     {
-      "id": "8f447c29-adcd-4497-9aa0-02450fd69017",
+      "id": "dce23453-a4ef-49fc-ac5f-95fbde08d95b",
       "kind": "point",
       "name": "C",
       "x": 890,
       "y": 570,
       "width": 0,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "#ffffff",
@@ -150,13 +158,15 @@
       }
     },
     {
-      "id": "6bb11c05-0599-4c22-a4af-311255d6e7fa",
+      "id": "0c451be0-e802-49b5-876c-e4713e133204",
       "kind": "line",
       "name": "AB",
       "x": 570,
       "y": 240,
       "width": -280,
       "height": 330,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -183,19 +193,21 @@
       "relation": {
         "kind": "segment",
         "sources": [
-          "f500bfe6-73c5-4d89-954b-3ec68e62edff",
-          "0feb41c0-785b-4dd2-b1cd-2033e146cfd3"
+          "a677f57d-c6ca-4b2a-b6db-e3b76870e091",
+          "bfe693f2-fdc0-4963-9152-402af2afcf01"
         ]
       }
     },
     {
-      "id": "b5c49bdb-4546-48f8-a21e-81439c72a6c9",
+      "id": "72f69bac-ce7f-47ee-9651-c426badd5e3a",
       "kind": "line",
       "name": "AC",
       "x": 570,
       "y": 240,
       "width": 320,
       "height": 330,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -222,19 +234,21 @@
       "relation": {
         "kind": "segment",
         "sources": [
-          "f500bfe6-73c5-4d89-954b-3ec68e62edff",
-          "8f447c29-adcd-4497-9aa0-02450fd69017"
+          "a677f57d-c6ca-4b2a-b6db-e3b76870e091",
+          "dce23453-a4ef-49fc-ac5f-95fbde08d95b"
         ]
       }
     },
     {
-      "id": "bd7c4fe2-a613-41a8-9313-d035405b232b",
+      "id": "5181a53c-5b96-44c2-8a3f-6dd8b0ec60fc",
       "kind": "line",
       "name": "BC",
       "x": 290,
       "y": 570,
       "width": 600,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -261,19 +275,21 @@
       "relation": {
         "kind": "segment",
         "sources": [
-          "0feb41c0-785b-4dd2-b1cd-2033e146cfd3",
-          "8f447c29-adcd-4497-9aa0-02450fd69017"
+          "bfe693f2-fdc0-4963-9152-402af2afcf01",
+          "dce23453-a4ef-49fc-ac5f-95fbde08d95b"
         ]
       }
     },
     {
-      "id": "1c0b6b79-3bd2-4df7-a793-f21eff82f4e4",
+      "id": "5cb9a18a-08d9-459d-b4b5-df91728fa550",
       "kind": "point",
       "name": "D",
       "x": 590,
       "y": 570,
       "width": 0,
       "height": 0,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#148063",
       "fill": "#ffffff",
@@ -300,18 +316,20 @@
       "relation": {
         "kind": "midpoint",
         "sources": [
-          "bd7c4fe2-a613-41a8-9313-d035405b232b"
+          "5181a53c-5b96-44c2-8a3f-6dd8b0ec60fc"
         ]
       }
     },
     {
-      "id": "f71404d9-fd18-4703-825c-2cd38f663cb4",
+      "id": "fd9d53cd-7aed-4c46-8e36-bb75844ee9e7",
       "kind": "line",
       "name": "AD",
       "x": 570,
       "y": 240,
       "width": 20,
       "height": 330,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#148063",
       "fill": "none",
@@ -338,19 +356,21 @@
       "relation": {
         "kind": "segment",
         "sources": [
-          "f500bfe6-73c5-4d89-954b-3ec68e62edff",
-          "1c0b6b79-3bd2-4df7-a793-f21eff82f4e4"
+          "a677f57d-c6ca-4b2a-b6db-e3b76870e091",
+          "5cb9a18a-08d9-459d-b4b5-df91728fa550"
         ]
       }
     },
     {
-      "id": "960618ed-e312-4100-a7e4-e6efb05aa94f",
+      "id": "ac7500f4-93ce-4d44-94d4-8315b9f78f34",
       "kind": "text",
       "name": "A",
       "x": 580,
       "y": 204,
       "width": 48,
       "height": 32,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -377,20 +397,22 @@
       "relation": {
         "kind": "label",
         "sources": [
-          "f500bfe6-73c5-4d89-954b-3ec68e62edff"
+          "a677f57d-c6ca-4b2a-b6db-e3b76870e091"
         ],
         "offsetX": 10,
         "offsetY": -36
       }
     },
     {
-      "id": "e3257995-67f5-4e0e-8394-782f28a9b0d2",
+      "id": "ff2e7d15-da22-403b-88b3-4291f5b67e68",
       "kind": "text",
       "name": "B",
       "x": 300,
       "y": 534,
       "width": 48,
       "height": 32,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -417,20 +439,22 @@
       "relation": {
         "kind": "label",
         "sources": [
-          "0feb41c0-785b-4dd2-b1cd-2033e146cfd3"
+          "bfe693f2-fdc0-4963-9152-402af2afcf01"
         ],
         "offsetX": 10,
         "offsetY": -36
       }
     },
     {
-      "id": "4124d8ee-e78d-43f5-8749-e8c9eda70804",
+      "id": "58b56f5e-33c0-4184-906e-87c6dc7d5f89",
       "kind": "text",
       "name": "C",
       "x": 900,
       "y": 534,
       "width": 48,
       "height": 32,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -457,20 +481,22 @@
       "relation": {
         "kind": "label",
         "sources": [
-          "8f447c29-adcd-4497-9aa0-02450fd69017"
+          "dce23453-a4ef-49fc-ac5f-95fbde08d95b"
         ],
         "offsetX": 10,
         "offsetY": -36
       }
     },
     {
-      "id": "e16a2d4b-40c1-4cc7-87d2-564947c19d5b",
+      "id": "11f3bb06-57e6-4784-a693-b09f2003865c",
       "kind": "text",
       "name": "D",
       "x": 600,
       "y": 534,
       "width": 48,
       "height": 32,
+      "cornerRadius": 0,
+      "pointRadius": 5,
       "rotation": 0,
       "stroke": "#334155",
       "fill": "none",
@@ -497,7 +523,7 @@
       "relation": {
         "kind": "label",
         "sources": [
-          "1c0b6b79-3bd2-4df7-a793-f21eff82f4e4"
+          "5cb9a18a-08d9-459d-b4b5-df91728fa550"
         ],
         "offsetX": 10,
         "offsetY": -36

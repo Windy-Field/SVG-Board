@@ -64,6 +64,15 @@ svg.lucide {
   display: grid;
   grid-template-rows: 68px 48px minmax(0, 1fr) 38px;
 }
+#save-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .topbar {
   display: flex;
   align-items: center;
@@ -100,8 +109,7 @@ h1 span {
 }
 .document-heading {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
   min-width: 0;
   border-left: 1px solid var(--color-rule);
   padding-left: var(--space-xl);
@@ -113,10 +121,6 @@ h1 span {
   width: 270px;
   max-width: 100%;
   font-weight: 600;
-}
-#save-status {
-  color: var(--color-muted);
-  font-size: 12px;
 }
 .file-actions {
   margin-left: auto;
@@ -278,7 +282,8 @@ h1 span {
   text-overflow: ellipsis;
 }
 .danger-button {
-  background: var(--color-error);
+  background: var(--color-danger);
+  border-color: var(--color-danger);
   color: var(--color-paper);
 }
 .tool-divider {
@@ -505,25 +510,6 @@ input[type="checkbox"] {
   font-size: 13px;
   overflow-wrap: anywhere;
 }
-.template-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  height: 42px;
-  padding: 0;
-  font-size: 13px;
-}
-.template-row svg {
-  width: 17px;
-  color: var(--color-muted);
-}
-.template-arrow {
-  margin-left: auto;
-  color: var(--color-muted);
-}
 .inspector-foot {
   margin-top: auto;
   display: flex;
@@ -715,6 +701,23 @@ dialog textarea {
   .primary-button:hover:not(:disabled) {
     background: var(--color-focus);
     color: var(--color-accent-ink);
+  }
+  button[aria-pressed="true"]:hover:not(:disabled) {
+    background: var(--color-selected);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+  .danger-button:hover:not(:disabled) {
+    background: var(--color-danger-hover);
+    color: #ffffff;
+    border-color: var(--color-danger-hover);
+  }
+  button[data-action="delete"]:hover:not(:disabled),
+  button[data-action="delete-archive"]:hover:not(:disabled),
+  button[data-delete-archive]:hover:not(:disabled) {
+    background: var(--color-danger-subtle);
+    color: var(--color-danger);
+    border-color: var(--color-danger);
   }
 }
 @media (max-width: 60rem) {

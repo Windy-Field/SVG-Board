@@ -6,6 +6,7 @@ import { createFlowTemplate } from "../../src/templates";
 import type { BoardDocument, Point } from "../../src/types";
 
 const CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
+const UPDATE_SCREENSHOTS = process.env.UPDATE_SCREENSHOTS === "true";
 
 /** 使用独立浏览器运行一次工作台操作，页面异常同样视为失败 */
 async function runBrowser(check: (page: Page) => Promise<void>): Promise<void> {
@@ -37,6 +38,7 @@ async function openBoard(page: Page, board: BoardDocument): Promise<void> {
   await page.addInitScript(seed, JSON.stringify(board));
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.locator(".upper-canvas")).toBeVisible();
+  await page.getByRole("button", { name: "自动吸附", exact: true }).click();
   await page.getByRole("button", { name: "适应画布", exact: true }).click();
 }
 
@@ -141,7 +143,7 @@ async function checkToolbar(page: Page): Promise<void> {
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await mode(page, "text", "纵向文本框");
   const position = await screen(page, { x: 400, y: 200 });
-  await page.mouse.click(position.x, position.y);
+  await drag(page, position, await screen(page, { x: 460, y: 440 }));
   await page.locator("#text-value").fill("纵向文本");
   await page.getByRole("button", { name: "保存文字", exact: true }).click();
   await expect(page.locator("#selection-count")).toHaveText("已选择 1");
@@ -151,7 +153,7 @@ async function checkToolbar(page: Page): Promise<void> {
   const center = await screen(page, { x: 430, y: 280 });
   await drag(page, center, { x: center.x + 40, y: center.y + 20 });
   const moved = await saved(page);
-  expect(moved.shapes[0].x).toBeGreaterThan(440);
+  expect(moved.shapes[0].x).toBeGreaterThan(430);
   const object = moved.shapes[0];
   const corner = await screen(page, { x: object.x + object.width, y: object.y + object.height });
   await drag(page, { x: corner.x + 5, y: corner.y + 5 }, { x: corner.x + 25, y: corner.y + 45 });
@@ -191,7 +193,7 @@ async function checkLines(page: Page): Promise<void> {
   expect(moved.shapes[7].relation.kind).toBe("none");
   expect(moved.shapes[7].y).toBeGreaterThanOrEqual(connector.y + 39);
   await page.getByRole("button", { name: "新建画板", exact: true }).click();
-  await page.getByRole("button", { name: "网格吸附", exact: true }).click();
+  await page.getByRole("button", { name: "自动吸附", exact: true }).click();
   await mode(page, "lines", "箭头");
   const start = await screen(page, { x: 203, y: 207 });
   const end = await screen(page, { x: 497, y: 217 });
@@ -294,7 +296,7 @@ async function checkArchives(page: Page): Promise<void> {
   document.name = "第一份";
   await openBoard(page, document);
   await page.getByRole("button", { name: "新建存档", exact: true }).click();
-  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(2);
+  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(4);
   const name = page.getByRole("textbox", { name: "作品名称", exact: true });
   await name.fill("第二份");
   await name.press("Tab");
@@ -304,17 +306,17 @@ async function checkArchives(page: Page): Promise<void> {
   await page.getByRole("button", { name: "删除当前存档", exact: true }).click();
   await expect(page.locator("#delete-dialog")).toBeVisible();
   await page.locator("#delete-dialog").getByRole("button", { name: "取消", exact: true }).click();
-  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(2);
+  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(4);
   await page.getByRole("button", { name: "删除当前存档", exact: true }).click();
   await page
     .locator("#delete-dialog")
     .getByRole("button", { name: "删除存档", exact: true })
     .click();
-  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(1);
+  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(3);
   await expect(name).toHaveValue("第二份");
   await page.reload();
   await expect(name).toHaveValue("第二份");
-  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(1);
+  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(3);
 }
 
 /** 验证新增多边形模式、连续绘制和曲线控制点保存 */
@@ -352,12 +354,14 @@ async function checkShapes(page: Page): Promise<void> {
   const curve = document.shapes[3];
   expect(curve.kind).toBe("curve");
   expect(curve.path).toContain("C");
-  await page.getByRole("button", { name: "选择", exact: true }).click();
+  await expect(page.locator('[data-tool-group="lines"]')).toHaveAttribute("aria-pressed", "true");
   // 初始曲线两个控制点位于端点外侧，先拖动第一个控制点
-  const control = await screen(page, { x: 550, y: 350 });
+  const bend = Math.hypot(300, 100) * 0.3;
+  const control = await screen(page, { x: 550, y: 450 - bend });
   await drag(page, control, { x: control.x, y: control.y - 50 });
   const changed = await saved(page);
   expect(changed.shapes[3].path).not.toBe(curve.path);
+  expect(changed.shapes.length).toBe(4);
   await page.reload();
   await expect(page.locator(".upper-canvas")).toBeVisible();
   /** 刷新后读取已落盘的数据，不要求页面再次执行保存 */
@@ -389,7 +393,10 @@ async function checkTextAndDescription(page: Page): Promise<void> {
   expect(savedText.shapes[0].fontFamily).toBe("KaiTi");
   expect(savedText.shapes[0].fontSize).toBe(32);
   expect(savedText.shapes[0].bold).toBe(true);
-  expect(savedText.contentBounds?.x).toBeLessThan(-300);
+  if (savedText.contentBounds === undefined) {
+    throw new Error("保存内容缺少边界");
+  }
+  expect(savedText.contentBounds.x).toBeLessThan(-300);
   expect(savedText.width).toBeLessThan(1200);
   const before = await page.locator("#canvas-host").boundingBox();
   await page.locator("#inspector-button").click();
@@ -434,6 +441,149 @@ async function checkBend(page: Page): Promise<void> {
   expect(undone.shapes[0].bend).toBe(0.5);
 }
 
+/** 验证重复空白存档、内置作品和删除按钮悬停状态 */
+async function checkArchiveDuplicates(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(3);
+  await expect(page.getByRole("heading", { name: "参考示例", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "新建存档", exact: true }).click();
+  await page.getByRole("button", { name: "新建存档", exact: true }).click();
+  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(3);
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg\+xml,/);
+  const statusBox = await page.locator("#save-status").boundingBox();
+  if (statusBox === null) {
+    throw new Error("保存状态区域缺失");
+  }
+  expect(statusBox.height).toBe(1);
+  await page.getByRole("button", { name: "删除当前存档", exact: true }).click();
+  const confirm = page.locator('[data-action="confirm-delete"]');
+  await confirm.hover();
+  await page.waitForTimeout(180);
+  /** 读取实际悬停色，按钮文字与背景必须有清楚区分 */
+  function colors(element: Element): string[] {
+    const style = window.getComputedStyle(element);
+    return [style.color, style.backgroundColor];
+  }
+  const palette = await confirm.evaluate(colors);
+  expect(palette).toEqual(["rgb(255, 255, 255)", "rgb(145, 32, 24)"]);
+  await page.screenshot({ path: "test-results/delete-hover.png" });
+  await page.locator('[data-action="cancel-delete"]').first().click();
+}
+
+/** 验证文字优先于线条，同点单击可轮换，点名可以移动和隐藏 */
+async function checkOverlapsAndPointLabels(page: Page): Promise<void> {
+  const document = createDocument();
+  const point = createShape("point", { x: 300, y: 200 });
+  point.text = "A";
+  const line = createShape("line", { x: 250, y: 183 });
+  line.width = 200;
+  line.layer = 10;
+  document.shapes.push(point, line);
+  await openBoard(page, document);
+  const overlap = await screen(page, { x: 320, y: 183 });
+  await page.mouse.click(overlap.x, overlap.y);
+  await expect(page.getByRole("textbox", { name: "对象名称", exact: true })).toHaveValue("A");
+  await page.mouse.click(overlap.x, overlap.y);
+  await expect(page.getByRole("textbox", { name: "对象名称", exact: true })).toHaveValue("线段");
+  await page.mouse.click(overlap.x, overlap.y);
+  await expect(page.getByRole("textbox", { name: "对象名称", exact: true })).toHaveValue("A");
+  await drag(page, overlap, { x: overlap.x + 50, y: overlap.y - 20 });
+  const moved = await saved(page);
+  expect(moved.shapes[2].x).toBeGreaterThan(350);
+  expect(moved.shapes[0].x).toBe(300);
+  await page.getByRole("checkbox", { name: "隐藏", exact: true }).check();
+  const hidden = await saved(page);
+  expect(hidden.shapes[2].hidden).toBe(true);
+}
+
+/** 验证拖动决定文字尺寸、矩形圆角保存和普通图形单击取消 */
+async function checkDrawingSizes(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  await page.getByRole("button", { name: "矩形", exact: true }).click();
+  const start = await screen(page, { x: 200, y: 200 });
+  await page.mouse.click(start.x, start.y);
+  await expect(page.locator("#object-count")).toHaveText("0 个对象");
+  await drag(page, start, await screen(page, { x: 430, y: 330 }));
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  const radius = page.getByRole("spinbutton", { name: "圆角", exact: true });
+  await expect(radius).toHaveValue("0");
+  await radius.fill("24");
+  await radius.press("Tab");
+  const rectangle = await saved(page);
+  expect(rectangle.shapes[0].cornerRadius).toBe(24);
+  await page.getByRole("button", { name: "文字", exact: true }).click();
+  await drag(page, await screen(page, { x: 500, y: 400 }), await screen(page, { x: 730, y: 460 }));
+  await page.locator("#text-value").fill("自由尺寸");
+  await page.getByRole("button", { name: "保存文字", exact: true }).click();
+  const text = await saved(page);
+  expect(text.shapes[1].width).toBeCloseTo(230, 2);
+  expect(text.shapes[1].fontSize).toBeGreaterThan(40);
+}
+
+/** 保存空白工作台截图供 README 使用，截图不包含选区或对话框 */
+async function checkWorkspaceScreenshot(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  await page.locator("#snap-button").click();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator("#object-count")).toHaveText("0 个对象");
+  let path = "test-results/workspace-empty.png";
+  if (UPDATE_SCREENSHOTS) {
+    path = "docs/images/workspace-empty.png";
+  }
+  await page.screenshot({ path: path });
+}
+
+/** 默认吸附开启时，新建与调整线条端点都优先停在线与边框交点 */
+async function checkEndpointIntersections(page: Page): Promise<void> {
+  const document = createDocument();
+  const rectangle = createShape("rect", { x: 413, y: 297 });
+  rectangle.width = 160;
+  rectangle.height = 140;
+  const line = createShape("line", { x: 300, y: 357 });
+  line.width = 400;
+  document.shapes.push(rectangle, line);
+  await openBoard(page, document);
+  await page.getByRole("button", { name: "自动吸附", exact: true }).click();
+  await expect(page.locator("#snap-button")).toHaveAttribute("aria-pressed", "true");
+  await mode(page, "lines", "箭头");
+  await drag(page, await screen(page, { x: 200, y: 180 }), await screen(page, { x: 417, y: 360 }));
+  const created = await saved(page);
+  const arrow = created.shapes[2];
+  expect(arrow.x + arrow.width).toBeCloseTo(413, 4);
+  expect(arrow.y + arrow.height).toBeCloseTo(357, 4);
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  await drag(page, await screen(page, { x: 413, y: 357 }), await screen(page, { x: 577, y: 360 }));
+  const resized = await saved(page);
+  expect(resized.shapes[2].x + resized.shapes[2].width).toBeCloseTo(573, 4);
+  expect(resized.shapes[2].y + resized.shapes[2].height).toBeCloseTo(357, 4);
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: "test-results/arrow-intersection.png" });
+}
+
+/** 打开已有重复存档时合并相同内容，保留当前作品和修改后的副本 */
+async function checkLegacyDuplicates(page: Page): Promise<void> {
+  const first = createFlowTemplate();
+  const second = createFlowTemplate();
+  const edited = createFlowTemplate();
+  edited.shapes[2].text = "补充检查";
+  const archives = [
+    { id: "first", document: first },
+    { id: "second", document: second },
+    { id: "edited", document: edited }
+  ];
+  /** 写入旧版的重复存档与当前编号 */
+  function seedLegacy(text: string): void {
+    localStorage.setItem("svg-board-archives-v1", text);
+    localStorage.setItem("svg-board-active-archive", "second");
+    localStorage.setItem("svg-board-builtin-archives-v1", "true");
+  }
+  await page.addInitScript(seedLegacy, JSON.stringify(archives));
+  await page.goto("http://127.0.0.1:5173/");
+  await expect(page.locator("#archive-list [data-archive]")).toHaveCount(2);
+  await expect(page.locator('[data-archive="first"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-archive="edited"]')).toBeVisible();
+}
+
 /** 检查工具布局与竖排文本 */
 async function testToolbar(): Promise<void> {
   await runBrowser(checkToolbar);
@@ -475,6 +625,36 @@ async function testBend(): Promise<void> {
   await runBrowser(checkBend);
 }
 
+/** 检查存档去重与按钮颜色 */
+async function testArchiveDuplicates(): Promise<void> {
+  await runBrowser(checkArchiveDuplicates);
+}
+
+/** 检查重叠对象和点名 */
+async function testOverlapsAndPointLabels(): Promise<void> {
+  await runBrowser(checkOverlapsAndPointLabels);
+}
+
+/** 检查放置尺寸和圆角 */
+async function testDrawingSizes(): Promise<void> {
+  await runBrowser(checkDrawingSizes);
+}
+
+/** 检查空白工作台 */
+async function testWorkspaceScreenshot(): Promise<void> {
+  await runBrowser(checkWorkspaceScreenshot);
+}
+
+/** 检查绘制与端点调整的交点吸附 */
+async function testEndpointIntersections(): Promise<void> {
+  await runBrowser(checkEndpointIntersections);
+}
+
+/** 检查已有存档迁移去重 */
+async function testLegacyDuplicates(): Promise<void> {
+  await runBrowser(checkLegacyDuplicates);
+}
+
 test("工具图标对齐与纵向文本编辑", testToolbar);
 test("参考线可拖动且箭头端点吸附网格", testLines);
 test("Ctrl 多选取消与右键框选", testSelection);
@@ -484,3 +664,9 @@ test("只读箭头端点不可修改", testReadOnlyLine);
 test("多边形模式与贝塞尔控制点保存", testShapes);
 test("浮动文字配置说明净化与侧栏扩展", testTextAndDescription);
 test("折线中段调整与撤销", testBend);
+test("存档去重标题单行与删除悬停颜色", testArchiveDuplicates);
+test("重叠轮换与点名移动隐藏", testOverlapsAndPointLabels);
+test("拖动决定尺寸且矩形圆角保存", testDrawingSizes);
+test("空白工作台截图", testWorkspaceScreenshot);
+test("默认吸附与线条端点交点优先", testEndpointIntersections);
+test("旧存档合并重复并保留编辑副本", testLegacyDuplicates);

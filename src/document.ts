@@ -2,6 +2,7 @@ import { MAX_PATH_LENGTH, MAX_SHAPES } from "./model";
 import type { BoardDocument, Relation, Shape, ShapeKind } from "./types";
 import { isFont } from "./fonts";
 import { createDocument } from "./model";
+import { convertPointLabels } from "./point-labels";
 
 export const MAX_FILE_BYTES = 8 * 1024 * 1024;
 export const STORAGE_KEY = "svg-board-document-v1";
@@ -133,6 +134,8 @@ function readShape(value: unknown): Shape {
     y: readNumber(value.y, -MAX_COORDINATE, MAX_COORDINATE),
     width: readNumber(value.width, -MAX_COORDINATE, MAX_COORDINATE),
     height: readNumber(value.height, -MAX_COORDINATE, MAX_COORDINATE),
+    cornerRadius: optionalNumber(value.cornerRadius, 0, 0, 50000),
+    pointRadius: optionalNumber(value.pointRadius, 5, 1, 5000),
     rotation: readNumber(value.rotation, -36000, 36000),
     stroke: readColor(value.stroke),
     fill: readColor(value.fill),
@@ -315,5 +318,6 @@ export function parseDocument(text: string): BoardDocument {
       height: readNumber(value.contentBounds.height, 1, MAX_COORDINATE * 2)
     };
   }
+  convertPointLabels(document);
   return document;
 }

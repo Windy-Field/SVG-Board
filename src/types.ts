@@ -44,6 +44,8 @@ export interface Shape {
   y: number;
   width: number;
   height: number;
+  cornerRadius: number;
+  pointRadius: number;
   rotation: number;
   stroke: string;
   fill: string;

@@ -45,6 +45,8 @@ export function createShape(kind: ShapeKind, position: Point): Shape {
     y: position.y,
     width: 0,
     height: 0,
+    cornerRadius: 0,
+    pointRadius: 5,
     rotation: 0,
     stroke: DEFAULT_STROKE,
     fill: DEFAULT_FILL,
@@ -104,7 +106,8 @@ export function getBounds(shape: Shape): Bounds {
   let left = shape.x;
   let top = shape.y;
   if (shape.kind === "point") {
-    return { x: left - 6, y: top - 6, width: 12, height: 12 };
+    const radius = shape.pointRadius + shape.strokeWidth / 2;
+    return { x: left - radius, y: top - radius, width: radius * 2, height: radius * 2 };
   }
   if (width < 0) {
     left = left + width;

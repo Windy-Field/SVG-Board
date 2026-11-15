@@ -24,7 +24,6 @@ import {
   Slash,
   Square,
   Trash2,
-  Triangle,
   Type,
   Undo2,
   Ungroup,
@@ -47,6 +46,7 @@ import { createTextToolbar } from "./text-toolbar";
 import { setupToolGroups } from "./tool-groups";
 import type { Tool } from "./types";
 import packageInfo from "../package.json";
+import { mountBrandIcon } from "./branding";
 
 const CLOCK_INTERVAL = 1000;
 const CLOCK_TIME_ZONE = "Asia/Shanghai";
@@ -159,7 +159,6 @@ export function refreshIcons(): void {
       Slash: Slash,
       Square: Square,
       Trash2: Trash2,
-      Triangle: Triangle,
       Type: Type,
       Undo2: Undo2,
       Ungroup: Ungroup,
@@ -183,6 +182,7 @@ export function refreshIcons(): void {
 
 /** 构建编辑器固定区域，动态对象和属性内容由各自模块更新 */
 export function mountInterface(): void {
+  mountBrandIcon();
   const app = getElement("app");
   let toolButtons = "";
   for (const definition of TOOLS) {
@@ -256,8 +256,8 @@ export function mountInterface(): void {
   }
   app.innerHTML = `
     <header class="topbar">
-      <div class="brand"><span class="brand-symbol">${icon("pentagon")}</span><h1>SVG<span>Board</span></h1></div>
-      <div class="document-heading"><input id="document-name" aria-label="作品名称" maxlength="100" /><span id="save-status" role="status">本地画板</span></div>
+      <div class="brand"><span class="brand-symbol">${icon("pen-tool")}</span><h1>SVG<span>Board</span></h1></div>
+      <div class="document-heading"><input id="document-name" aria-label="作品名称" maxlength="100" /><span id="save-status" role="status"></span></div>
       <div class="file-actions">
         ${commandButton("new", "新建画板", "plus")}
         ${commandButton("open", "打开作品", "folder-open")}
@@ -272,7 +272,7 @@ export function mountInterface(): void {
       <div class="command-group arrangement"><button type="button" class="text-button" data-action="align-left">左对齐</button><button type="button" class="text-button" data-action="align-top">顶对齐</button><button type="button" class="text-button" data-action="distribute">水平等距</button></div>
       <div class="command-spacer"></div>
       <button type="button" class="icon-button" id="grid-button" data-action="grid" aria-label="显示网格" title="显示网格" aria-pressed="true">${icon("grid-3x3")}</button>
-      <button type="button" class="icon-button" id="snap-button" data-action="snap" aria-label="网格吸附" title="网格吸附" aria-pressed="false">${icon("magnet")}</button>
+      <button type="button" class="icon-button" id="snap-button" data-action="snap" aria-label="自动吸附" title="自动吸附" aria-pressed="true">${icon("magnet")}</button>
       <button type="button" class="icon-button" id="readonly-button" data-action="readonly" aria-label="只读模式" title="只读模式" aria-pressed="false">${icon("lock-keyhole")}</button>
       <button type="button" class="icon-button" id="inspector-button" data-action="toggle-inspector" aria-label="说明" title="说明" aria-pressed="true" aria-expanded="true" aria-controls="inspector">${icon("book-open")}</button>
     </div>
@@ -284,7 +284,7 @@ export function mountInterface(): void {
         <div id="properties-panel"></div><div id="layers-panel" hidden></div>
         <section id="description-panel" class="description-panel" hidden><div class="section-title"><h2>项目介绍</h2><button type="button" class="text-button" data-action="description-edit">编辑</button></div><textarea id="description-editor" aria-label="项目介绍 Markdown" rows="10" hidden></textarea><article id="description-preview" class="markdown-preview"></article></section>
         <p id="construction-status" class="relationship-status" role="status"></p>
-        <section class="template-section"><div class="section-title"><h2>画图存档</h2>${commandButton("new-archive", "新建存档", "plus")}</div><div id="archive-list"></div><h2>参考示例</h2><button type="button" class="template-row" data-action="template-flow">${icon("link-2")}<span>程序流程图</span><span class="template-arrow">↗</span></button><button type="button" class="template-row" data-action="template-geometry">${icon("triangle")}<span>三角形中线</span><span class="template-arrow">↗</span></button></section>
+        <section class="template-section"><div class="section-title"><h2>画图存档</h2>${commandButton("new-archive", "新建存档", "plus")}</div><div id="archive-list"></div></section>
         <div class="inspector-foot">SVG-Board</div>
       </aside>
     </main>

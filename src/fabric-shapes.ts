@@ -9,7 +9,8 @@ export function createFabricShape(shape: Shape): FabricObject {
   const bounds = getBounds(shape);
   const width = Math.max(1, bounds.width);
   const height = Math.max(1, bounds.height);
-  let object: FabricObject = new Rect({ width: width, height: height, rx: 6, ry: 6 });
+  const radius = Math.min(shape.cornerRadius, width / 2, height / 2);
+  let object: FabricObject = new Rect({ width: width, height: height, rx: radius, ry: radius });
   if (shape.kind === "ellipse") {
     object = new Ellipse({ rx: width / 2, ry: height / 2 });
   } else if (shape.kind === "diamond") {
@@ -20,7 +21,7 @@ export function createFabricShape(shape: Shape): FabricObject {
       { x: 0, y: height / 2 }
     ]);
   } else if (shape.kind === "point") {
-    object = new Circle({ radius: 5 });
+    object = new Circle({ radius: shape.pointRadius });
   } else if (shape.kind === "line") {
     object = new Line([0, 0, shape.width, shape.height]);
   } else if (shape.kind === "arrow" || shape.kind === "connector") {
@@ -113,6 +114,9 @@ export function createFabricShape(shape: Shape): FabricObject {
     lockScalingFlip: true
   });
   object.set({ strokeLineCap: "round", strokeLineJoin: "round" });
+  if (shape.kind === "arrow" || shape.kind === "connector") {
+    object.set({ strokeLineJoin: "miter" });
+  }
   if (object instanceof Path && (shape.kind === "arrow" || shape.kind === "connector")) {
     // 路径外框包含箭头两翼，不能把外框中心误当成线段中心
     const angle = (shape.rotation * Math.PI) / 180;
@@ -207,8 +211,7 @@ function createArrow(shape: Shape): Path {
     " L " +
     secondX +
     " " +
-    secondY +
-    " Z";
+    secondY;
   return new Path(path, { fill: "" });
 }
 

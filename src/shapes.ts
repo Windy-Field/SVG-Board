@@ -1,5 +1,7 @@
 import type { Point, Shape } from "./types";
 
+const CURVE_BEND_RATIO = 0.3;
+
 /** 按边数生成以外框为范围的正多边形顶点 */
 export function regularPoints(width: number, height: number, sides: number): Point[] {
   const points: Point[] = [];
@@ -44,6 +46,7 @@ export function fitPolygon(shape: Shape): void {
 export function curvePath(shape: Shape): string {
   const width = shape.width;
   const height = shape.height;
+  const bend = Math.hypot(width, height) * CURVE_BEND_RATIO;
   return (
     "M " +
     -width / 2 +
@@ -52,11 +55,11 @@ export function curvePath(shape: Shape): string {
     " C " +
     -width / 6 +
     " " +
-    (-height / 2 - 100) +
+    (-height / 2 - bend) +
     " " +
     width / 6 +
     " " +
-    (height / 2 + 100) +
+    (height / 2 + bend) +
     " " +
     width / 2 +
     " " +

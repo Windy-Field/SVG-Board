@@ -76,6 +76,9 @@ function checkNode(source, node) {
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
     report(source, node, "不允许箭头函数或函数表达式，请使用命名函数");
   }
+  if (ts.isPropertyAccessChain(node) || ts.isElementAccessChain(node) || ts.isCallChain(node)) {
+    report(source, node, "不允许可选链，请先检查对象是否存在");
+  }
   if (ts.isConditionalExpression(node) || ts.isShorthandPropertyAssignment(node)) {
     report(source, node, "不允许三目运算符或对象属性简写");
   }

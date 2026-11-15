@@ -1,10 +1,10 @@
 /** 字体仅使用本机已安装字体，不请求外部字体资源 */
 export const FONTS = [
-  { value: "sans-serif", label: "默认黑体" },
+  { value: "sans-serif", label: "黑体" },
   { value: "Microsoft YaHei", label: "微软雅黑" },
   { value: "SimSun", label: "宋体" },
   { value: "KaiTi", label: "楷体" },
-  { value: "serif", label: "默认衬线" },
+  { value: "serif", label: "衬线体" },
   { value: "monospace", label: "等宽字体" },
   { value: "Arial", label: "Arial" },
   { value: "Georgia", label: "Georgia" }

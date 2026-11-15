@@ -16,6 +16,7 @@ async function openDocument(page: Page, document: BoardDocument): Promise<void> 
   await page.addInitScript(installDocument, { key: STORAGE_KEY, text: JSON.stringify(document) });
   await page.goto(APP_URL);
   await expect(page.locator(".upper-canvas")).toBeVisible();
+  await page.getByRole("button", { name: "自动吸附", exact: true }).click();
   await page.getByRole("button", { name: "适应画布", exact: true }).click();
 }
 

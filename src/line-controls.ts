@@ -3,7 +3,7 @@ import type { FabricObject, TMat2D, TPointerEvent, Transform } from "fabric";
 import { getLinePoints } from "./geometry";
 import { updateFabricGeometry } from "./fabric-shapes";
 import { GRID_SIZE } from "./model";
-import type { Shape } from "./types";
+import type { Shape, Point as BoardPoint } from "./types";
 
 /** 使用 Fabric 控制点拖动线条端点，模型始终记录真正的起点和终点 */
 export class LineControls {
@@ -11,13 +11,21 @@ export class LineControls {
   private snap: () => boolean;
   private changed: () => void;
   private canEdit: () => boolean;
+  private snapPoint: (position: BoardPoint, excluded: string) => BoardPoint;
 
   /** 保存当前对象及吸附开关，回调只更新关联对象，不创建历史记录 */
-  constructor(shape: Shape, snap: () => boolean, changed: () => void, canEdit: () => boolean) {
+  constructor(
+    shape: Shape,
+    snap: () => boolean,
+    changed: () => void,
+    canEdit: () => boolean,
+    snapPoint: (position: BoardPoint, excluded: string) => BoardPoint
+  ) {
     this.shape = shape;
     this.snap = snap;
     this.changed = changed;
     this.canEdit = canEdit;
+    this.snapPoint = snapPoint;
   }
 
   /** 为线段安装两个端点手柄，线条中间专用于移动 */
@@ -118,12 +126,9 @@ export class LineControls {
     if (this.shape.locked || !this.canEdit()) {
       return false;
     }
-    if (this.snap()) {
-      left = Math.round(left / GRID_SIZE) * GRID_SIZE;
-      top = Math.round(top / GRID_SIZE) * GRID_SIZE;
-    }
+    const snapped = this.snapPoint({ x: left, y: top }, this.shape.id);
     const points = getLinePoints(this.shape);
-    points[index] = { x: left, y: top };
+    points[index] = snapped;
     this.shape.x = points[0].x;
     this.shape.y = points[0].y;
     this.shape.width = points[1].x - points[0].x;
