@@ -84,7 +84,7 @@ export function findShape(document: BoardDocument, id: string): Shape | undefine
   return undefined;
 }
 
-/** 按对象层级排序，供画布、图层面板与导出共用 */
+/** 按对象层级排序，供画布、对象管理与导出共用 */
 export function compareLayers(first: Shape, second: Shape): number {
   return first.layer - second.layer;
 }

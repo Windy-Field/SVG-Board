@@ -10,7 +10,15 @@ export type ShapeKind =
   | "connector"
   | "polygon"
   | "curve";
-export type Tool = ShapeKind | "select" | "hand" | "vertical-text" | "square" | "custom-polygon";
+export type Tool =
+  | ShapeKind
+  | "select"
+  | "hand"
+  | "vertical-text"
+  | "square"
+  | "custom-polygon"
+  | "circle"
+  | "segment";
 export type RelationKind =
   | "none"
   | "connector"

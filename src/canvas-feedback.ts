@@ -10,6 +10,7 @@ export class CanvasFeedback {
   private canvas: Canvas;
   private hovered: FabricObject | null = null;
   private marquee: Bounds | null = null;
+  private locked: FabricObject[] = [];
 
   /** 绑定库的绘制事件，在场景绘制后补充鼠标指向提示 */
   constructor(canvas: Canvas) {
@@ -32,8 +33,40 @@ export class CanvasFeedback {
     this.canvas.requestRenderAll();
   }
 
+  /** 保存需要显示锁标记的对象，标记仅用于编辑画面 */
+  setLocked(objects: FabricObject[]): void {
+    this.locked = objects;
+  }
+
+  /** 锁定对象右上角显示小锁，标记不随作品导出 */
+  private drawLocks(context: CanvasRenderingContext2D): void {
+    for (const object of this.locked) {
+      if (!object.visible || object.canvas !== this.canvas) {
+        continue;
+      }
+      const bounds = object.getBoundingRect();
+      const anchor = new Point(bounds.left + bounds.width, bounds.top).transform(
+        this.canvas.viewportTransform
+      );
+      const left = anchor.x - 8;
+      const top = anchor.y - 18;
+      context.save();
+      context.fillStyle = "#ffffff";
+      context.strokeStyle = "#475569";
+      context.lineWidth = 1.5;
+      context.fillRect(left - 3, top - 3, 18, 20);
+      context.strokeRect(left, top + 7, 12, 9);
+      context.beginPath();
+      context.arc(left + 6, top + 6, 4, Math.PI, 0);
+      context.lineTo(left + 10, top + 7);
+      context.stroke();
+      context.restore();
+    }
+  }
+
   /** 将对象四角转换为屏幕位置，缩放画布时保持轮廓线宽不变 */
   private draw(event: { ctx: CanvasRenderingContext2D }): void {
+    this.drawLocks(event.ctx);
     if (this.marquee !== null) {
       const bounds = this.marquee;
       const start = new Point(bounds.x, bounds.y).transform(this.canvas.viewportTransform);

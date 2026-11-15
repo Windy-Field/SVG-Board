@@ -1,6 +1,38 @@
 /* 紧凑的工具表面独立于作品样式，避免影响导出内容 */
 .topbar {
   height: 68px;
+  gap: 16px;
+}
+.document-heading {
+  flex: 1;
+}
+.document-heading input {
+  width: 100%;
+  min-width: 80px;
+}
+.header-workspace,
+.archive-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.header-workspace {
+  flex-shrink: 0;
+}
+.archive-picker select {
+  width: 210px;
+  height: 34px;
+  min-width: 0;
+  border: 1px solid var(--color-input-rule);
+  border-radius: 4px;
+  padding: 0 8px;
+  background: var(--color-paper);
+  text-overflow: ellipsis;
+}
+.file-actions {
+  margin-left: 0;
+  gap: 4px;
 }
 .brand h1 {
   font-size: 22px;
@@ -12,20 +44,63 @@
   border-radius: 4px;
 }
 .inspector-tabs {
-  gap: 16px;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
 }
 .inspector-tabs button {
-  font-size: 13px;
+  font-size: 18px;
+  flex: 1;
+  text-align: center;
+}
+.inspector-tabs #objects-tab {
+  flex: 1.7;
+}
+.object-row {
+  align-items: center;
+}
+.object-row > button:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.object-row.locked {
+  border-left: 3px solid var(--color-muted);
+}
+.object-row .icon-button {
+  width: 30px;
+  min-width: 30px;
+}
+.inspector-tabs span {
+  font-size: 15px;
+}
+.inspector h2 {
+  font-size: 18px;
+}
+.inspector label,
+.inspector input,
+.inspector select,
+.inspector p,
+.inspector .property-field > span,
+.inspector .color-field,
+.inspector .color-code,
+.inspector .canvas-background,
+.inspector .object-row button,
+.inspector .text-button,
+.inspector .multi-actions button {
+  font-size: 15px;
+}
+.inspector .color-field > span:first-child {
+  width: 96px;
 }
 .tools {
-  gap: 2px;
+  gap: 1px;
   padding: 8px 0;
 }
 .tools .tool-button,
 .tools .icon-button {
   width: 34px;
-  height: 34px;
-  min-height: 34px;
+  height: 32px;
+  min-height: 32px;
 }
 .tools svg.lucide {
   width: 18px;
@@ -35,8 +110,8 @@
   gap: 2px;
 }
 .geometry-tools .icon-button {
-  height: 32px;
-  min-height: 32px;
+  height: 30px;
+  min-height: 30px;
 }
 .tool-divider {
   margin: 6px 0;
@@ -58,13 +133,13 @@
   border: 1px solid var(--color-input-rule);
   border-radius: 6px;
   background: var(--color-paper);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.6;
 }
 .markdown-preview {
   line-height: 1.7;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 15px;
 }
 .markdown-preview h1,
 .markdown-preview h2 {
@@ -140,6 +215,32 @@
   background: var(--color-paper);
 }
 @media (max-width: 60rem) {
+  #app {
+    grid-template-rows: 112px 48px minmax(0, 1fr) 38px;
+  }
+  .topbar {
+    height: auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: 52px 52px;
+    gap: 0 12px;
+    padding: 0 12px;
+  }
+  .header-workspace {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-end;
+  }
+  .archive-picker {
+    flex: 1;
+  }
+  .archive-picker select {
+    width: 100%;
+  }
+  .file-actions {
+    grid-column: 3;
+    grid-row: 1;
+  }
   .workspace {
     grid-template-columns: 60px minmax(0, 1fr) 260px;
   }
@@ -148,8 +249,26 @@
   }
 }
 @media (max-width: 45rem) {
+  #app {
+    grid-template-rows: 104px 46px minmax(0, 1fr) 52px;
+  }
   .topbar {
-    height: 60px;
+    height: auto;
+    grid-template-rows: 48px 48px;
+    gap: 0 4px;
+    padding: 0 6px;
+  }
+  .file-actions .icon-button {
+    width: 28px;
+  }
+  .file-actions .primary-button {
+    padding: 0 7px;
+  }
+  .document-heading input {
+    min-width: 0;
+  }
+  .brand-symbol svg {
+    width: 24px;
   }
   .workspace,
   .workspace.inspector-hidden {

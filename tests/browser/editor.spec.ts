@@ -99,16 +99,7 @@ async function runResponsiveTest(page: Page): Promise<void> {
     await page.setViewportSize({ width: width, height: 800 });
     await page.goto("http://127.0.0.1:5173/");
     await expect(page.locator(".upper-canvas")).toBeVisible();
-    if ((await page.locator("#inspector-button").getAttribute("aria-pressed")) === "false") {
-      await page.locator("#inspector-button").click();
-    }
-    await page
-      .locator("#archive-list")
-      .getByRole("button", { name: "课程作业 · 提交流程", exact: true })
-      .click();
-    if (width <= 720) {
-      await page.locator("#inspector-button").click();
-    }
+    await page.locator("#archive-select").selectOption({ label: "课程作业 · 提交流程" });
     const clock = page.locator("#current-time");
     await expect(clock).toBeVisible();
     await expect(clock).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
@@ -199,10 +190,7 @@ async function runRelationshipTest(page: Page): Promise<void> {
   page.on("pageerror", collectError);
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.locator(".upper-canvas")).toBeVisible();
-  await page
-    .locator("#archive-list")
-    .getByRole("button", { name: "课程作业 · 提交流程", exact: true })
-    .click();
+  await page.locator("#archive-select").selectOption({ label: "课程作业 · 提交流程" });
   await page.getByRole("button", { name: "适应画布", exact: true }).click();
   await page.getByRole("button", { name: "自动吸附", exact: true }).click();
   const position = await boardPosition(page, { x: 460, y: 262 });
@@ -216,10 +204,7 @@ async function runRelationshipTest(page: Page): Promise<void> {
   const flow = parseDocument(await readSavedDocument(page));
   expect(flow.shapes[2].y).toBeGreaterThan(300);
   expect(flow.shapes[7].height).not.toBe(0);
-  await page
-    .locator("#archive-list")
-    .getByRole("button", { name: "几何作图 · 三角形中线", exact: true })
-    .click();
+  await page.locator("#archive-select").selectOption({ label: "几何作图 · 三角形中线" });
   const vertex = await boardPosition(page, { x: 290, y: 570 });
   await page.mouse.move(vertex.x, vertex.y);
   await page.mouse.down();
@@ -256,10 +241,7 @@ async function runToolsTest(page: Page): Promise<void> {
   page.on("pageerror", collectError);
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.locator(".upper-canvas")).toBeVisible();
-  await page
-    .locator("#archive-list")
-    .getByRole("button", { name: "课程作业 · 提交流程", exact: true })
-    .click();
+  await page.locator("#archive-select").selectOption({ label: "课程作业 · 提交流程" });
   await page.locator('[data-tool-group="lines"]').focus();
   await page.keyboard.press("ArrowDown");
   await page.getByRole("button", { name: "连接线", exact: true }).click();
@@ -283,7 +265,7 @@ async function runToolsTest(page: Page): Promise<void> {
   const drawn = parseDocument(await readSavedDocument(page));
   expect(drawn.shapes[14].path.length).toBeGreaterThan(10);
   await page.getByRole("button", { name: "选择", exact: true }).click();
-  await page.getByRole("button", { name: "图层 15", exact: true }).click();
+  await page.locator("#objects-tab").click();
   await page.getByRole("button", { name: "准备作业材料", exact: true }).click();
   await page.getByRole("button", { name: "属性", exact: true }).click();
   await page.getByRole("spinbutton", { name: "宽度", exact: true }).fill("240");

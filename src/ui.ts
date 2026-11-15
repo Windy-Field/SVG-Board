@@ -31,6 +31,7 @@ import {
   createIcons
 } from "lucide";
 import { Crosshair, Equal, GitCommitHorizontal, TextCursorInput, LockKeyhole } from "lucide";
+import { Eye, EyeOff, LockOpen } from "lucide";
 import {
   Bold,
   Italic,
@@ -168,6 +169,9 @@ export function refreshIcons(): void {
       GitCommitHorizontal: GitCommitHorizontal,
       TextCursorInput: TextCursorInput,
       LockKeyhole: LockKeyhole,
+      LockOpen: LockOpen,
+      Eye: Eye,
+      EyeOff: EyeOff,
       Bold: Bold,
       Italic: Italic,
       Underline: Underline,
@@ -209,6 +213,10 @@ export function mountInterface(): void {
     }
     if (definition.tool === "polygon") {
       group = ' data-tool-group="polygons" aria-haspopup="true" aria-expanded="false"';
+      badge = '<span class="tool-more" aria-hidden="true"></span>';
+    }
+    if (definition.tool === "ellipse") {
+      group = ' data-tool-group="ellipses" aria-haspopup="true" aria-expanded="false"';
       badge = '<span class="tool-more" aria-hidden="true"></span>';
     }
     toolButtons =
@@ -258,6 +266,7 @@ export function mountInterface(): void {
     <header class="topbar">
       <div class="brand"><span class="brand-symbol">${icon("pen-tool")}</span><h1>SVG<span>Board</span></h1></div>
       <div class="document-heading"><input id="document-name" aria-label="作品名称" maxlength="100" /><span id="save-status" role="status"></span></div>
+      <div class="header-workspace"><div class="archive-picker"><select id="archive-select" aria-label="画图存档"></select>${commandButton("new-archive", "新建存档", "plus")}</div><button type="button" class="icon-button" id="readonly-button" data-action="readonly" aria-label="只读模式" title="只读模式" aria-pressed="false">${icon("lock-keyhole")}</button><button type="button" class="icon-button" id="snap-button" data-action="snap" aria-label="自动吸附" title="自动吸附" aria-pressed="true">${icon("magnet")}</button></div>
       <div class="file-actions">
         ${commandButton("new", "新建画板", "plus")}
         ${commandButton("open", "打开作品", "folder-open")}
@@ -272,19 +281,16 @@ export function mountInterface(): void {
       <div class="command-group arrangement"><button type="button" class="text-button" data-action="align-left">左对齐</button><button type="button" class="text-button" data-action="align-top">顶对齐</button><button type="button" class="text-button" data-action="distribute">水平等距</button></div>
       <div class="command-spacer"></div>
       <button type="button" class="icon-button" id="grid-button" data-action="grid" aria-label="显示网格" title="显示网格" aria-pressed="true">${icon("grid-3x3")}</button>
-      <button type="button" class="icon-button" id="snap-button" data-action="snap" aria-label="自动吸附" title="自动吸附" aria-pressed="true">${icon("magnet")}</button>
-      <button type="button" class="icon-button" id="readonly-button" data-action="readonly" aria-label="只读模式" title="只读模式" aria-pressed="false">${icon("lock-keyhole")}</button>
       <button type="button" class="icon-button" id="inspector-button" data-action="toggle-inspector" aria-label="说明" title="说明" aria-pressed="true" aria-expanded="true" aria-controls="inspector">${icon("book-open")}</button>
     </div>
     <main class="workspace">
       <nav class="tools" aria-label="绘图工具">${toolButtons}<div class="tool-divider"></div><div class="geometry-tools" role="group" aria-label="几何构造">${constructionButtons}</div><div class="tool-divider"></div><label class="toolbar-color" title="新图形描边颜色"><input id="tool-stroke" type="color" value="#334155" aria-label="新图形描边颜色" /></label></nav>
       <section id="canvas-host" class="canvas-host" aria-label="画布工作区"><span class="canvas-label">无限画布</span></section>
       <aside class="inspector" id="inspector" aria-label="说明">
-        <div class="inspector-tabs"><button type="button" id="properties-tab" class="active" data-action="tab-properties" aria-pressed="true">属性</button><button type="button" id="layers-tab" data-action="tab-layers" aria-pressed="false">图层 <span id="layer-count">0</span></button><button type="button" id="description-tab" data-action="tab-description" aria-pressed="false">说明</button></div>
-        <div id="properties-panel"></div><div id="layers-panel" hidden></div>
+        <div class="inspector-tabs"><button type="button" id="properties-tab" class="active" data-action="tab-properties" aria-pressed="true">属性</button><button type="button" id="objects-tab" data-action="tab-objects" aria-pressed="false">对象管理 <span id="object-manager-count">0</span></button><button type="button" id="description-tab" data-action="tab-description" aria-pressed="false">说明</button></div>
+        <div id="properties-panel"></div><div id="objects-panel" hidden><section class="property-section"><div id="selected-object-management"></div></section><div id="object-list"></div></div>
         <section id="description-panel" class="description-panel" hidden><div class="section-title"><h2>项目介绍</h2><button type="button" class="text-button" data-action="description-edit">编辑</button></div><textarea id="description-editor" aria-label="项目介绍 Markdown" rows="10" hidden></textarea><article id="description-preview" class="markdown-preview"></article></section>
         <p id="construction-status" class="relationship-status" role="status"></p>
-        <section class="template-section"><div class="section-title"><h2>画图存档</h2>${commandButton("new-archive", "新建存档", "plus")}</div><div id="archive-list"></div></section>
         <div class="inspector-foot">SVG-Board</div>
       </aside>
     </main>
@@ -295,7 +301,7 @@ export function mountInterface(): void {
     <dialog id="delete-dialog"><div class="dialog-heading"><h2>删除存档</h2>${commandButton("cancel-delete", "取消删除", "x")}</div><p id="delete-archive-name"></p><p>此操作无法撤销</p><div class="dialog-actions"><button type="button" data-action="cancel-delete">取消</button><button type="button" class="danger-button" data-action="confirm-delete">删除存档</button></div></dialog>
     <div id="tool-menu" class="tool-menu" popover="manual" role="group" aria-label="工具模式"></div>
     <dialog id="polygon-dialog"><form id="polygon-form"><div class="dialog-heading"><h2>正多边形</h2>${commandButton("close-polygon", "关闭多边形设置", "x")}</div><label for="polygon-sides">边数</label><input id="polygon-sides" type="number" min="3" max="32" step="1" value="5" /><div class="dialog-actions"><button type="submit" class="primary-button">开始绘制</button></div></form></dialog>
-    <dialog id="export-dialog"><div class="dialog-heading"><h2>导出作品</h2>${commandButton("close-export", "关闭导出", "x")}</div><div class="export-options"><label><input id="export-crop" type="checkbox" checked /> 按内容裁剪</label><label><input id="export-transparent" type="checkbox" /> 透明背景</label><label><input id="export-auxiliary" type="checkbox" checked /> 隐藏辅助对象</label></div><div id="export-preview" class="export-preview"></div><p id="export-error" role="status"></p><div class="dialog-actions"><button type="button" data-action="export-svg">导出 SVG</button><button type="button" class="primary-button" data-action="export-png">导出 PNG</button></div></dialog>
+    <dialog id="export-dialog"><div class="dialog-heading"><h2>导出作品</h2>${commandButton("close-export", "关闭导出", "x")}</div><div id="export-preview" class="export-preview"></div><p id="export-error" role="status"></p><div class="dialog-actions"><button type="button" data-action="export-project">导出项目</button><button type="button" data-action="export-svg">导出 SVG</button><button type="button" class="primary-button" data-action="export-png">导出 PNG</button></div></dialog>
   `;
   refreshIcons();
   createTextToolbar(getElement("canvas-host"));

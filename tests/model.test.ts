@@ -28,6 +28,19 @@ function testMidpoint(): void {
 }
 test("拖动顶点保持中点关系", testMidpoint);
 
+/** 隐藏来源只改变显示开关，关联几何仍继续计算 */
+function testHiddenSource(): void {
+  const document = createGeometryTemplate();
+  const source = document.shapes[2];
+  source.hidden = true;
+  source.x = 400;
+  const invalid = updateRelations(document);
+  assert.equal(invalid.size, 0);
+  assert.equal(document.shapes[7].hidden, false);
+  assert.equal(document.shapes[7].x, (400 + 890) / 2);
+}
+test("隐藏来源保留关联对象显示与计算", testHiddenSource);
+
 /** 两条线平行时交点失效，恢复相交后再次计算位置 */
 function testIntersection(): void {
   const document = createDocument();

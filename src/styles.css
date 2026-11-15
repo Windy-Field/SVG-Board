@@ -7,6 +7,7 @@
 }
 html,
 body {
+  user-select: none;
   margin: 0;
   overflow-x: clip;
 }
@@ -22,6 +23,11 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
 }
 button {
   cursor: pointer;
@@ -267,20 +273,6 @@ h1 span {
   transform: translateX(24px);
   pointer-events: none;
 }
-.archive-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-.archive-row > button:first-child {
-  min-width: 0;
-  flex: 1;
-  text-align: left;
-  padding: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .danger-button {
   background: var(--color-danger);
   border-color: var(--color-danger);
@@ -363,8 +355,7 @@ h1 span {
   margin-left: 4px;
   color: var(--color-muted);
 }
-.property-section,
-.template-section {
+.property-section {
   padding: 20px var(--space-lg);
   border-bottom: 1px solid var(--color-rule);
 }
@@ -518,30 +509,30 @@ input[type="checkbox"] {
   font-size: 12px;
   color: var(--color-muted);
 }
-.layer-row {
+.object-row {
   display: flex;
   min-height: 42px;
   padding: 4px 10px;
   gap: 6px;
   border-bottom: 1px solid var(--color-rule);
 }
-.layer-row.selected {
+.object-row.selected {
   background: var(--color-selected);
   color: var(--color-accent);
 }
-.layer-row button {
+.object-row button {
   border: 0;
   background: transparent;
   text-align: left;
   font-size: 13px;
 }
-.layer-row button:first-child {
+.object-row button:first-child {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.empty-layer {
+.empty-object-list {
   margin: 24px 16px;
   font-size: 13px;
   color: var(--color-muted);
@@ -666,17 +657,6 @@ dialog textarea {
   min-height: 36px;
   padding: 0 16px;
 }
-.export-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-.export-options label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 .export-preview {
   height: 240px;
   display: grid;
@@ -713,8 +693,7 @@ dialog textarea {
     border-color: var(--color-danger-hover);
   }
   button[data-action="delete"]:hover:not(:disabled),
-  button[data-action="delete-archive"]:hover:not(:disabled),
-  button[data-delete-archive]:hover:not(:disabled) {
+  button[data-action="delete-archive"]:hover:not(:disabled) {
     background: var(--color-danger-subtle);
     color: var(--color-danger);
     border-color: var(--color-danger);

@@ -6,9 +6,10 @@ import { arrangeShapes, changeLayers, constructShape, deleteShapes, pasteShapes 
 import { parseDocument, STORAGE_KEY } from "./document";
 import { createSvg, downloadBlob, exportPng, getFileName, openProject, saveProject } from "./files";
 import { updateRelations } from "./geometry";
-import { applyProperty, renderLayers, renderProperties } from "./inspector";
+import { applyProperty, renderProperties } from "./inspector";
+import { renderObjects } from "./object-manager";
 import { createDocument, findShape, History, isDependent, moveShape } from "./model";
-import { getElement, getInput, isTool, mountInterface, refreshIcons } from "./ui";
+import { getElement, getInput, isTool, mountInterface } from "./ui";
 import type { BoardDocument, RelationKind, Shape, Tool } from "./types";
 import { Archives } from "./archives";
 import { updateTextToolbar } from "./text-toolbar";
@@ -98,12 +99,12 @@ function saveLocal(): void {
   }
 }
 
-/** 更新状态栏、属性与图层，模型与界面不保存两份对象数据 */
+/** 更新状态栏、属性和对象管理列表 */
 function refreshPanels(): void {
   const selected = board.getSelectedShapes();
   getInput("document-name").value = board.document.name;
   getElement("object-count").textContent = board.document.shapes.length + " 个对象";
-  getElement("layer-count").textContent = String(board.document.shapes.length);
+  getElement("object-manager-count").textContent = String(board.document.shapes.length);
   getElement("board-size").textContent = board.document.width + " × " + board.document.height;
   getElement("selection-count").textContent = "";
   if (selected.length > 0) {
@@ -115,13 +116,14 @@ function refreshPanels(): void {
   const selection = board.selectedIds.join(",");
   if (selected.length > 0 && selection !== previousSelection && board.tool === "select") {
     setSidebar(true);
-    getElement("description-panel").hidden = true;
-    getElement("layers-panel").hidden = true;
-    getElement("properties-panel").hidden = false;
-    syncTabs("properties");
+    if (getElement("objects-panel").hidden) {
+      getElement("description-panel").hidden = true;
+      getElement("properties-panel").hidden = false;
+      syncTabs("properties");
+    }
   }
   previousSelection = selection;
-  renderLayers(board.document, board.selectedIds);
+  renderObjects(board.document, board.selectedIds);
   renderArchives();
   applyReadOnlyControls();
   const undo = document.querySelector('[data-action="undo"]');
@@ -204,6 +206,14 @@ function refreshToolButtons(tool: Tool): void {
   if (polygons !== null && (tool === "polygon" || tool === "custom-polygon")) {
     polygons.setAttribute("aria-pressed", "true");
   }
+  const ellipses = document.querySelector('[data-tool-group="ellipses"]');
+  if (ellipses !== null && (tool === "ellipse" || tool === "circle")) {
+    ellipses.setAttribute("aria-pressed", "true");
+  }
+  const segment = document.querySelector('[data-action="construct-segment"]');
+  if (segment !== null) {
+    segment.setAttribute("aria-pressed", String(tool === "segment"));
+  }
 }
 
 /** 取得原生对话框，先验证元素类型再调用模态接口 */
@@ -272,12 +282,12 @@ function handleTextSubmit(event: SubmitEvent): void {
   getDialog("text-dialog").close();
 }
 
-/** 读取导出选项，预览和实际下载始终使用同一组参数 */
+/** 预览与下载共用透明背景、内容裁剪和辅助对象过滤 */
 function getExportSvg(): string {
   return createSvg(board.document, {
-    crop: getInput("export-crop").checked,
-    transparent: getInput("export-transparent").checked,
-    hideAuxiliary: getInput("export-auxiliary").checked
+    crop: true,
+    transparent: true,
+    hideAuxiliary: true
   });
 }
 
@@ -338,23 +348,25 @@ async function handleClick(event: MouseEvent): Promise<void> {
     }
     return;
   }
-  const archiveButton = event.target.closest("[data-archive]");
-  if (archiveButton !== null) {
-    saveLocal();
-    openArchive(archiveButton.getAttribute("data-archive") || "");
-    return;
-  }
-  const archiveDelete = event.target.closest("[data-delete-archive]");
-  if (archiveDelete !== null) {
-    requestDeleteArchive(archiveDelete.getAttribute("data-delete-archive") || "");
-    return;
-  }
-  const layer = event.target.closest("[data-layer]");
+  const layer = event.target.closest("[data-object-select]");
   if (layer !== null) {
     board.select(
-      layer.getAttribute("data-layer") || "",
+      layer.getAttribute("data-object-select") || "",
       event.shiftKey || event.ctrlKey || event.metaKey
     );
+    return;
+  }
+  const lock = event.target.closest("[data-object-lock]");
+  if (lock !== null) {
+    if (board.readOnly) {
+      return;
+    }
+    const shape = findShape(board.document, lock.getAttribute("data-object-lock") || "");
+    if (shape !== undefined) {
+      shape.locked = !shape.locked;
+      board.render();
+      commit();
+    }
     return;
   }
   const visibility = event.target.closest("[data-visibility]");
@@ -393,7 +405,6 @@ async function executeAction(action: string): Promise<void> {
     getInput("file-input").click();
   } else if (action === "save") {
     saveLocal();
-    saveProject(board.document);
   } else if (action === "new-archive") {
     saveLocal();
     board.setDocument(archives.create(createDocument()));
@@ -457,7 +468,7 @@ async function executeAction(action: string): Promise<void> {
     }
   } else if (action === "tab-description") {
     getElement("properties-panel").hidden = true;
-    getElement("layers-panel").hidden = true;
+    getElement("objects-panel").hidden = true;
     getElement("description-panel").hidden = false;
     syncTabs("description");
   } else if (action === "description-edit") {
@@ -466,15 +477,11 @@ async function executeAction(action: string): Promise<void> {
     getElement("description-preview").hidden = !editor.hidden;
   } else if (action === "close-polygon") {
     getDialog("polygon-dialog").close();
-  } else if (action === "tab-layers" || action === "tab-properties") {
-    const layers = action === "tab-layers";
+  } else if (action === "tab-objects" || action === "tab-properties") {
+    const objects = action === "tab-objects";
     getElement("description-panel").hidden = true;
-    getElement("properties-panel").hidden = layers;
-    getElement("layers-panel").hidden = !layers;
-    getElement("layers-tab").classList.toggle("active", layers);
-    getElement("properties-tab").classList.toggle("active", !layers);
-    getElement("layers-tab").setAttribute("aria-pressed", String(layers));
-    getElement("properties-tab").setAttribute("aria-pressed", String(!layers));
+    getElement("properties-panel").hidden = objects;
+    getElement("objects-panel").hidden = !objects;
     syncTabs(action.replace("tab-", ""));
   } else if (action === "close-text") {
     getDialog("text-dialog").close();
@@ -489,6 +496,8 @@ async function executeAction(action: string): Promise<void> {
       new Blob([getExportSvg()], { type: "image/svg+xml" }),
       getFileName(board.document.name) + ".svg"
     );
+  } else if (action === "export-project") {
+    saveProject(board.document);
   } else if (action === "export-png") {
     const dialog = getDialog("export-dialog");
     dialog.setAttribute("aria-busy", "true");
@@ -550,6 +559,13 @@ function executeObjectAction(action: string): void {
     }
     return;
   } else if (action.startsWith("construct-")) {
+    if (
+      action === "construct-segment" &&
+      (selected.length !== 2 || selected[0].kind !== "point" || selected[1].kind !== "point")
+    ) {
+      board.setTool("segment");
+      return;
+    }
     const shape = constructShape(board.document, selected, getRelationKind(action));
     addPointLabel(board.document, shape);
     board.selectedIds = [shape.id];
@@ -596,9 +612,15 @@ function updateProperty(control: HTMLInputElement | HTMLSelectElement): void {
   }
 }
 
-/** 处理属性、作品名称和导出选项变化 */
+/** 处理存档切换、作品名称和对象属性变化 */
 function handleChange(event: Event): void {
   const control = event.target;
+  if (control instanceof HTMLSelectElement && control.id === "archive-select") {
+    const id = control.value;
+    saveLocal();
+    openArchive(id);
+    return;
+  }
   if (
     control instanceof HTMLTextAreaElement &&
     control.id === "description-editor" &&
@@ -611,7 +633,7 @@ function handleChange(event: Event): void {
   if (!(control instanceof HTMLInputElement) && !(control instanceof HTMLSelectElement)) {
     return;
   }
-  if (board.readOnly && !control.id.startsWith("export-")) {
+  if (board.readOnly) {
     return;
   }
   if (control.dataset.textProperty !== undefined) {
@@ -625,8 +647,6 @@ function handleChange(event: Event): void {
   } else if (control.id === "tool-stroke") {
     board.stroke = control.value;
     board.render();
-  } else if (control.id.startsWith("export-")) {
-    refreshExportPreview();
   } else if (control.dataset.property !== undefined) {
     updateProperty(control);
   }
@@ -783,6 +803,7 @@ function isViewAction(action: string): boolean {
     "close-export",
     "export-svg",
     "export-png",
+    "export-project",
     "zoom-in",
     "zoom-out",
     "reset-zoom",
@@ -790,7 +811,7 @@ function isViewAction(action: string): boolean {
     "grid",
     "snap",
     "toggle-inspector",
-    "tab-layers",
+    "tab-objects",
     "tab-properties",
     "tab-description",
     "cancel-delete"
@@ -801,6 +822,11 @@ function isViewAction(action: string): boolean {
 function applyReadOnlyControls(): void {
   const readonly = board.readOnly;
   getInput("document-name").disabled = readonly;
+  for (const button of document.querySelectorAll("[data-visibility], [data-object-lock]")) {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = readonly;
+    }
+  }
   for (const control of document.querySelectorAll("[data-property]")) {
     if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement) {
       if (readonly) {
@@ -829,32 +855,21 @@ function applyReadOnlyControls(): void {
   }
 }
 
-/** 显示本地存档列表，按钮上的删除命令与打开命令分开 */
+/** 同步标题栏存档选择，选项值使用存档编号 */
 function renderArchives(): void {
-  const list = getElement("archive-list");
+  const list = getElement("archive-select");
+  if (!(list instanceof HTMLSelectElement)) {
+    return;
+  }
   list.replaceChildren();
   for (const archive of archives.items) {
-    const row = document.createElement("div");
-    row.className = "archive-row";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.archive = archive.id;
-    button.textContent = archive.document.name;
-    button.title = archive.document.name;
-    button.setAttribute("aria-pressed", String(archives.active === archive.id));
-    row.append(button);
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.dataset.deleteArchive = archive.id;
-    remove.className = "icon-button";
-    remove.title = "删除存档";
-    remove.setAttribute("aria-label", "删除存档：" + archive.document.name);
-    remove.disabled = board.readOnly;
-    remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>';
-    row.append(remove);
-    list.append(row);
+    const option = document.createElement("option");
+    option.value = archive.id;
+    option.textContent = archive.document.name;
+    list.append(option);
   }
-  refreshIcons();
+  list.value = archives.active;
+  list.title = board.document.name;
 }
 
 /** 切换存档后重置撤销记录，避免修改跨存档混在一起 */
@@ -902,7 +917,7 @@ function refreshTextToolbar(): void {
 
 /** 面板标签使用统一选中状态 */
 function syncTabs(active: string): void {
-  for (const name of ["properties", "layers", "description"]) {
+  for (const name of ["properties", "objects", "description"]) {
     const button = getElement(name + "-tab");
     button.classList.toggle("active", name === active);
     button.setAttribute("aria-pressed", String(name === active));

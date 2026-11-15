@@ -31,6 +31,11 @@ export function updateTextToolbar(
     return;
   }
   toolbar.hidden = false;
+  for (const control of toolbar.querySelectorAll("[data-text-property]")) {
+    if (control instanceof HTMLElement) {
+      control.dataset.object = shape.id;
+    }
+  }
   const host = toolbar.parentElement;
   if (host === null) {
     return;

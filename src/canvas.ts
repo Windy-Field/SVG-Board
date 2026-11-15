@@ -10,6 +10,8 @@ import { addPointLabel } from "./point-labels";
 import { OverlapSelection } from "./overlap-selection";
 import { CurveControls } from "./curve-controls";
 import { EditorCanvas } from "./editor-canvas";
+import { constructShape } from "./commands";
+import { strokeInMarquee } from "./marquee";
 import { regularPoints, fitPolygon } from "./shapes";
 import { updateRelations } from "./geometry";
 import {
@@ -30,6 +32,9 @@ const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 4;
 const CANVAS_MARGIN = 40;
 const GRID_COLOR = "#9ca9bd";
+const CLICK_DISTANCE = 4;
+const POINT_HIT_DISTANCE = 12;
+const MARQUEE_TOLERANCE = 3;
 
 /** 画布通过回调报告作品、选择和视口变化 */
 export interface CanvasCallbacks {
@@ -92,6 +97,9 @@ export class BoardCanvas {
   private polygonPreview: Polygon | null = null;
   private overlapSelection = new OverlapSelection();
   private overlapClick: { x: number; y: number; ids: string[] } | null = null;
+  private waitingForClick = false;
+  private finishingClick = false;
+  private segmentStart = "";
 
   /** 创建画布并绑定库提供的选择、变换与绘制事件 */
   constructor(host: HTMLElement, document: BoardDocument, callbacks: CanvasCallbacks) {
@@ -295,7 +303,7 @@ export class BoardCanvas {
     this.callbacks.viewChanged();
   }
 
-  /** 从图层选择对象，追加选择用于 Shift 多选 */
+  /** 从对象列表选择对象，追加选择用于 Shift 多选 */
   select(id: string, append: boolean): void {
     const shape = findShape(this.document, id);
     if (shape === undefined) {
@@ -410,7 +418,7 @@ export class BoardCanvas {
     this.rebuilding = wasRebuilding;
   }
 
-  /** 无论从框选、Shift 还是图层进入多选，都应用相同的约束 */
+  /** 框选、Shift 和对象列表的多选共用相同约束 */
   private configureSelection(): void {
     const selection = this.fabric.getActiveObject();
     if (!(selection instanceof ActiveSelection)) {
@@ -669,11 +677,66 @@ export class BoardCanvas {
     return snapPosition(this.document, position, this.snap, this.viewport.zoom, excluded);
   }
 
+  /** 优先采用附近已有几何点，点击空白处时新建独立端点 */
+  private segmentPoint(position: BoardPoint): Shape {
+    let nearest: Shape | undefined;
+    let distance = POINT_HIT_DISTANCE / this.viewport.zoom;
+    for (const shape of this.document.shapes) {
+      if (shape.kind !== "point" || shape.hidden) {
+        continue;
+      }
+      const current = Math.hypot(shape.x - position.x, shape.y - position.y);
+      if (current <= distance) {
+        nearest = shape;
+        distance = current;
+      }
+    }
+    if (nearest !== undefined) {
+      return nearest;
+    }
+    const point = createShape("point", position);
+    point.stroke = this.stroke;
+    point.fill = this.fill;
+    point.layer = this.document.shapes.length;
+    point.name = "P" + String(this.document.shapes.length + 1);
+    point.text = point.name;
+    this.document.shapes.push(point);
+    addPointLabel(this.document, point);
+    return point;
+  }
+
+  /** 两次点击确定线段来源，完成后可继续创建下一条线段 */
+  private placeSegmentPoint(position: BoardPoint): void {
+    if (this.document.shapes.length > MAX_SHAPES - 3) {
+      this.callbacks.notify("对象数量已达上限");
+      return;
+    }
+    const point = this.segmentPoint(position);
+    const first = findShape(this.document, this.segmentStart);
+    if (first === undefined) {
+      this.segmentStart = point.id;
+      this.selectedIds = [point.id];
+    } else if (first.id !== point.id) {
+      const line = constructShape(this.document, [first, point], "segment");
+      this.selectedIds = [line.id];
+      this.segmentStart = "";
+    }
+    this.render();
+    this.callbacks.changed();
+  }
+
   /** 开始绘图或平移，选择工具的操作全部交给库 */
   private handlePointerDown(event: TPointerEventInfo<TPointerEvent>): void {
     this.clearHover();
     this.fabric.upperCanvasEl.focus({ preventScroll: true });
-    if ((event.e instanceof MouseEvent && event.e.button !== 0) || this.gesture !== null) {
+    if (event.e instanceof MouseEvent && event.e.button !== 0) {
+      return;
+    }
+    if (this.gesture !== null) {
+      if (this.waitingForClick) {
+        this.finishingClick = true;
+        this.handlePointerMove(event);
+      }
       return;
     }
     const start = this.getPosition(event.e);
@@ -690,6 +753,10 @@ export class BoardCanvas {
       return;
     }
     if (this.tool === "select" || this.tool === "pencil") {
+      return;
+    }
+    if (this.tool === "segment") {
+      this.placeSegmentPoint(start);
       return;
     }
     if (
@@ -714,6 +781,9 @@ export class BoardCanvas {
     }
     if (kind === "square") {
       kind = "rect";
+    }
+    if (kind === "circle") {
+      kind = "ellipse";
     }
     const shape = createShape(kind, start);
     shape.stroke = this.stroke;
@@ -766,6 +836,13 @@ export class BoardCanvas {
     }
     if (shape.kind === "point") {
       const position = this.fabric.getScenePoint(event.e);
+      if (
+        (position.x - gesture.start.x) * (position.x - gesture.start.x) +
+          (position.y - gesture.start.y) * (position.y - gesture.start.y) <
+        CLICK_DISTANCE * CLICK_DISTANCE
+      ) {
+        return;
+      }
       shape.pointRadius = Math.min(
         5000,
         Math.max(1, Math.hypot(position.x - gesture.start.x, position.y - gesture.start.y))
@@ -776,6 +853,13 @@ export class BoardCanvas {
     const position = this.getPosition(event.e);
     shape.width = position.x - gesture.start.x;
     shape.height = position.y - gesture.start.y;
+    if (this.tool === "circle") {
+      const radius = Math.hypot(shape.width, shape.height);
+      shape.x = gesture.start.x - radius;
+      shape.y = gesture.start.y - radius;
+      shape.width = radius * 2;
+      shape.height = radius * 2;
+    }
     if (shape.kind === "text") {
       const lines = Array.from(shape.text).length;
       let textHeight = Math.abs(shape.height);
@@ -864,6 +948,18 @@ export class BoardCanvas {
       queueMicrotask(this.restoreSelection.bind(this));
       return;
     }
+    const pointer = this.fabric.getViewportPoint(event.e);
+    const distance = Math.hypot(pointer.x - gesture.screen.x, pointer.y - gesture.screen.y);
+    if (
+      shape.kind !== "point" &&
+      !this.finishingClick &&
+      (this.waitingForClick || distance < CLICK_DISTANCE)
+    ) {
+      this.waitingForClick = true;
+      return;
+    }
+    this.waitingForClick = false;
+    this.finishingClick = false;
     if (shape !== null && shape.kind === "connector") {
       const hit = this.fabric.findTarget(event.e);
       let destination: Shape | undefined;
@@ -999,6 +1095,9 @@ export class BoardCanvas {
 
   /** 取消半成品图形，避免保存不完整的连接关系 */
   cancelGesture(): void {
+    this.waitingForClick = false;
+    this.finishingClick = false;
+    this.segmentStart = "";
     if (this.customVertices.length > 0) {
       this.customVertices = [];
       this.polygonPreview = null;
@@ -1074,6 +1173,9 @@ export class BoardCanvas {
         start: position,
         append: event.ctrlKey || event.shiftKey || event.metaKey
       };
+      const selected = this.selectedIds.slice();
+      this.fabric.discardActiveObject();
+      this.selectedIds = selected;
       this.clearHover();
       return;
     }
@@ -1082,6 +1184,21 @@ export class BoardCanvas {
     }
     const actual = this.fabric.searchPossibleTargets(this.fabric.getObjects(), position).target;
     const active = this.fabric.getActiveObject();
+    const activeId = this.selectedIds[0];
+    const activeShape = findShape(this.document, activeId || "");
+    if (activeShape !== undefined && activeShape.relation.kind === "segment") {
+      for (const source of activeShape.relation.sources) {
+        const point = findShape(this.document, source);
+        if (
+          point !== undefined &&
+          Math.hypot(point.x - position.x, point.y - position.y) <=
+            POINT_HIT_DISTANCE / this.viewport.zoom
+        ) {
+          this.select(point.id, false);
+          return;
+        }
+      }
+    }
     if (active !== undefined && active.findControl(this.fabric.getViewportPoint(event))) {
       return;
     }
@@ -1089,7 +1206,11 @@ export class BoardCanvas {
       const ids = this.overlapCandidates(position);
       this.overlapClick = { x: event.clientX, y: event.clientY, ids: ids };
       const first = findShape(this.document, ids[0] || "");
-      if (first !== undefined && first.kind === "text" && !this.selectedIds.includes(first.id)) {
+      if (
+        first !== undefined &&
+        (first.kind === "text" || first.kind === "point") &&
+        !this.selectedIds.includes(first.id)
+      ) {
         this.select(first.id, false);
       }
     }
@@ -1137,6 +1258,7 @@ export class BoardCanvas {
   /** 用库的实际命中检查收集对象，文本框优先于同位置的线条 */
   private overlapCandidates(position: Point): string[] {
     const texts: string[] = [];
+    const points: string[] = [];
     const others: string[] = [];
     const objects = this.fabric.getObjects();
     objects.reverse();
@@ -1152,11 +1274,13 @@ export class BoardCanvas {
       const shape = findShape(this.document, id);
       if (shape !== undefined && shape.kind === "text") {
         texts.push(id);
+      } else if (shape !== undefined && shape.kind === "point") {
+        points.push(id);
       } else {
         others.push(id);
       }
     }
-    return texts.concat(others);
+    return texts.concat(points, others);
   }
 
   /** 从右键起点计算正宽高的框选范围 */
@@ -1219,14 +1343,24 @@ export class BoardCanvas {
           if (object === undefined || !object.visible) {
             continue;
           }
-          const box = object.getBoundingRect();
-          if (
-            box.left >= bounds.x &&
-            box.top >= bounds.y &&
-            box.left + box.width <= bounds.x + bounds.width &&
-            box.top + box.height <= bounds.y + bounds.height &&
-            !this.selectedIds.includes(shape.id)
-          ) {
+          const tolerance = MARQUEE_TOLERANCE / this.viewport.zoom;
+          const topLeft = new Point(bounds.x - tolerance, bounds.y - tolerance);
+          const bottomRight = new Point(
+            bounds.x + bounds.width + tolerance,
+            bounds.y + bounds.height + tolerance
+          );
+          let hit =
+            object.intersectsWithRect(topLeft, bottomRight) ||
+            object.isContainedWithinRect(topLeft, bottomRight);
+          if (isLine(shape) || shape.kind === "curve" || shape.kind === "pencil") {
+            hit = strokeInMarquee(shape, {
+              x: topLeft.x,
+              y: topLeft.y,
+              width: bottomRight.x - topLeft.x,
+              height: bottomRight.y - topLeft.y
+            });
+          }
+          if (hit && !this.selectedIds.includes(shape.id)) {
             this.selectedIds.push(shape.id);
           }
         }
@@ -1425,6 +1559,7 @@ export class BoardCanvas {
     const invalid = updateRelations(this.document);
     const ordered = this.document.shapes.slice();
     ordered.sort(compareLayers);
+    const locked: FabricObject[] = [];
     for (const shape of ordered) {
       if (shape.hidden) {
         continue;
@@ -1433,6 +1568,9 @@ export class BoardCanvas {
       this.configureObject(shape, object);
       object.visible = !invalid.has(shape.id);
       this.fabric.add(object);
+      if (shape.locked) {
+        locked.push(object);
+      }
       this.objects.set(shape.id, object);
       this.ids.set(object, shape.id);
       this.originals.set(shape.id, structuredClone(shape));
@@ -1445,6 +1583,7 @@ export class BoardCanvas {
       }
     }
     this.updateToolMode();
+    this.feedback.setLocked(locked);
     this.restoreSelection();
     this.fabric.setViewportTransform([
       this.viewport.zoom,

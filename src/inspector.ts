@@ -1,12 +1,4 @@
-import {
-  compareLayers,
-  findShape,
-  isDependent,
-  isLine,
-  moveShape,
-  resizeShape,
-  SHAPE_LABELS
-} from "./model";
+import { findShape, isDependent, isLine, moveShape, resizeShape, SHAPE_LABELS } from "./model";
 import { commandButton, getElement, refreshIcons } from "./ui";
 import type { BoardDocument, Shape } from "./types";
 import { fontOptions } from "./fonts";
@@ -37,10 +29,18 @@ export function applyProperty(
     }
     return true;
   }
-  if (selected.length !== 1) {
+  let target = selected;
+  if (control.dataset.object !== undefined) {
+    const shape = findShape(document, control.dataset.object);
+    if (shape === undefined) {
+      return false;
+    }
+    target = [shape];
+  }
+  if (target.length !== 1) {
     return false;
   }
-  const shape = selected[0];
+  const shape = target[0];
   if (control instanceof HTMLInputElement && control.type === "checkbox") {
     return applyCheckbox(shape, property, control.checked);
   }
@@ -111,10 +111,6 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
 function applyCheckbox(shape: Shape, property: string, checked: boolean): boolean {
   if (property === "dash") {
     shape.dash = checked;
-  } else if (property === "locked") {
-    shape.locked = checked;
-  } else if (property === "hidden") {
-    shape.hidden = checked;
   } else if (property === "auxiliary") {
     shape.auxiliary = checked;
   } else if (property === "noFill") {
@@ -283,17 +279,6 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
       fontOptions() +
       '</select></label><label class="property-field"><span>对齐</span><select data-property="textAlign" aria-label="文字对齐"><option value="start">左对齐</option><option value="middle">居中</option><option value="end">右对齐</option></select></label></section>';
   }
-  markup =
-    markup +
-    '<section class="property-section"><h2>对象管理</h2><div class="checkbox-row">' +
-    checkboxField("锁定", "locked", shape.locked) +
-    checkboxField("隐藏", "hidden", shape.hidden) +
-    '</div><div class="object-actions">' +
-    commandButton("raise", "上移一层", "arrow-up") +
-    commandButton("lower", "下移一层", "arrow-down") +
-    commandButton("copy", "复制对象", "copy") +
-    commandButton("ungroup", "取消组合", "ungroup") +
-    "</div></section>";
   if (isDependent(shape)) {
     const names: string[] = [];
     for (const id of shape.relation.sources) {
@@ -311,6 +296,11 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
       "</p></section>";
   }
   panel.innerHTML = markup;
+  for (const control of panel.querySelectorAll("[data-property]")) {
+    if (control instanceof HTMLElement) {
+      control.dataset.object = shape.id;
+    }
+  }
   const font = panel.querySelector('[data-property="fontFamily"]');
   const align = panel.querySelector('[data-property="textAlign"]');
   if (font instanceof HTMLSelectElement) {
@@ -320,43 +310,4 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     align.value = shape.textAlign;
   }
   refreshIcons();
-}
-
-/** 显示层级列表，名称用 textContent 写入，隐藏对象也保留操作入口 */
-export function renderLayers(document: BoardDocument, selectedIds: string[]): void {
-  const panel = getElement("layers-panel");
-  panel.replaceChildren();
-  const ordered = document.shapes.slice();
-  ordered.sort(compareLayers);
-  ordered.reverse();
-  for (const shape of ordered) {
-    const row = window.document.createElement("div");
-    row.className = "layer-row";
-    if (selectedIds.includes(shape.id)) {
-      row.classList.add("selected");
-    }
-    const select = window.document.createElement("button");
-    select.type = "button";
-    select.dataset.layer = shape.id;
-    select.textContent = shape.name;
-    select.title = shape.name;
-    row.append(select);
-    const visibility = window.document.createElement("button");
-    visibility.type = "button";
-    visibility.dataset.visibility = shape.id;
-    visibility.setAttribute("aria-label", "切换显示：" + shape.name);
-    visibility.title = "切换显示";
-    visibility.textContent = "显";
-    if (shape.hidden) {
-      visibility.textContent = "隐";
-    }
-    row.append(visibility);
-    panel.append(row);
-  }
-  if (ordered.length === 0) {
-    const empty = window.document.createElement("p");
-    empty.className = "empty-layer";
-    empty.textContent = "暂无对象";
-    panel.append(empty);
-  }
 }

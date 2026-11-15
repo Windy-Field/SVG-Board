@@ -69,7 +69,7 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
   const relation = shape.relation;
   const first = findShape(document, relation.sources[0]);
   const second = findShape(document, relation.sources[1]);
-  if (first === undefined || first.hidden) {
+  if (first === undefined) {
     return false;
   }
   if (relation.kind === "label") {
@@ -91,7 +91,7 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
     shape.y = middle.y;
     return true;
   }
-  if (second === undefined || second.hidden) {
+  if (second === undefined) {
     return false;
   }
   if (relation.kind === "connector") {
