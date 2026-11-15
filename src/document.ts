@@ -1,5 +1,7 @@
 import { MAX_PATH_LENGTH, MAX_SHAPES } from "./model";
-import type { BoardDocument, Shape, ShapeKind } from "./types";
+import type { BoardDocument, Relation, Shape, ShapeKind } from "./types";
+import { isFont } from "./fonts";
+import { createDocument } from "./model";
 
 export const MAX_FILE_BYTES = 8 * 1024 * 1024;
 export const STORAGE_KEY = "svg-board-document-v1";
@@ -45,7 +47,9 @@ function readKind(value: unknown): ShapeKind {
     value === "ellipse" ||
     value === "diamond" ||
     value === "line" ||
-    value === "arrow"
+    value === "arrow" ||
+    value === "polygon" ||
+    value === "curve"
   ) {
     return value;
   }
@@ -77,7 +81,8 @@ function readShape(value: unknown): Shape {
     relationKind !== "midpoint" &&
     relationKind !== "intersection" &&
     relationKind !== "parallel" &&
-    relationKind !== "perpendicular"
+    relationKind !== "perpendicular" &&
+    relationKind !== "label"
   ) {
     throw new Error("文件包含不支持的构造关系");
   }
@@ -93,12 +98,32 @@ function readShape(value: unknown): Shape {
     throw new Error("画笔路径包含不支持的指令");
   }
   const fontFamily = readString(value.fontFamily, 80);
-  if (fontFamily !== "sans-serif" && fontFamily !== "serif" && fontFamily !== "monospace") {
+  if (!isFont(fontFamily)) {
     throw new Error("文件包含不支持的字体");
   }
   const textAlign = readString(value.textAlign, 10);
   if (textAlign !== "start" && textAlign !== "middle" && textAlign !== "end") {
     throw new Error("文字对齐格式不正确");
+  }
+  const relation: Relation = { kind: relationKind, sources: sources };
+  const points = [];
+  if (value.points !== undefined) {
+    if (!Array.isArray(value.points) || value.points.length > 1000) {
+      throw new Error("多边形顶点过多");
+    }
+    for (const point of value.points) {
+      if (!isRecord(point)) {
+        throw new Error("顶点格式无效");
+      }
+      points.push({
+        x: readNumber(point.x, -MAX_COORDINATE, MAX_COORDINATE),
+        y: readNumber(point.y, -MAX_COORDINATE, MAX_COORDINATE)
+      });
+    }
+  }
+  if (relationKind === "label") {
+    relation.offsetX = readNumber(value.relation.offsetX, -MAX_COORDINATE, MAX_COORDINATE);
+    relation.offsetY = readNumber(value.relation.offsetY, -MAX_COORDINATE, MAX_COORDINATE);
   }
   return {
     id: readString(value.id, 80),
@@ -118,14 +143,53 @@ function readShape(value: unknown): Shape {
     fontSize: readNumber(value.fontSize, 8, 200),
     fontFamily: fontFamily,
     textAlign: textAlign,
+    textDirection: readTextDirection(value.textDirection),
+    bold: optionalBoolean(value.bold),
+    italic: optionalBoolean(value.italic),
+    underline: optionalBoolean(value.underline),
+    points: points,
+    sides: optionalNumber(value.sides, 5, 3, 1000),
+    bend: optionalNumber(value.bend, 0.5, -10, 10),
     locked: readBoolean(value.locked),
     hidden: readBoolean(value.hidden),
     auxiliary: readBoolean(value.auxiliary),
     group: readString(value.group, 80),
     layer: readNumber(value.layer, -100000, 100000),
     path: path,
-    relation: { kind: relationKind, sources: sources }
+    relation: relation
   };
+}
+
+/** 旧作品未保存开关时使用关闭状态 */
+function optionalBoolean(value: unknown): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  return readBoolean(value);
+}
+
+/** 旧作品缺少新增数值时使用默认值 */
+function optionalNumber(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  return readNumber(value, minimum, maximum);
+}
+
+/** 旧项目没有文字方向字段时按横排读取，保证已有作品仍可打开 */
+function readTextDirection(value: unknown): "horizontal" | "vertical" {
+  if (value === undefined || value === "horizontal") {
+    return "horizontal";
+  }
+  if (value === "vertical") {
+    return "vertical";
+  }
+  throw new Error("文字方向无效");
 }
 
 /** 验证构造依赖的数量、来源类型和顺序，禁止循环或悬空引用 */
@@ -140,7 +204,7 @@ function validateRelations(shapes: Shape[]): void {
     if (relation.kind === "none") {
       required = 0;
     }
-    if (relation.kind === "midpoint") {
+    if (relation.kind === "midpoint" || relation.kind === "label") {
       required = 1;
     }
     if (relation.sources.length !== required) {
@@ -156,6 +220,9 @@ function validateRelations(shapes: Shape[]): void {
       const second = seen.get(relation.sources[1]);
       if (first === undefined) {
         throw new Error("缺少构造来源");
+      }
+      if (relation.kind === "label" && (first.kind !== "point" || shape.kind !== "text")) {
+        throw new Error("顶点文字需要关联一个点");
       }
       if (
         relation.kind === "segment" &&
@@ -228,12 +295,25 @@ export function parseDocument(text: string): BoardDocument {
     shapes.push(readShape(shape));
   }
   validateRelations(shapes);
-  return {
+  const document: BoardDocument = {
     format: "svg-board",
     version: 1,
     name: readString(value.name, 100),
     width: readNumber(value.width, 100, 10000),
     height: readNumber(value.height, 100, 10000),
-    shapes: shapes
+    shapes: shapes,
+    description: createDocument().description
   };
+  if (value.description !== undefined) {
+    document.description = readString(value.description, 100000);
+  }
+  if (isRecord(value.contentBounds)) {
+    document.contentBounds = {
+      x: readNumber(value.contentBounds.x, -MAX_COORDINATE, MAX_COORDINATE),
+      y: readNumber(value.contentBounds.y, -MAX_COORDINATE, MAX_COORDINATE),
+      width: readNumber(value.contentBounds.width, 1, MAX_COORDINATE * 2),
+      height: readNumber(value.contentBounds.height, 1, MAX_COORDINATE * 2)
+    };
+  }
+  return document;
 }

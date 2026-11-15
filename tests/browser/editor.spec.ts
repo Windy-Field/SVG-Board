@@ -103,11 +103,22 @@ async function runResponsiveTest(page: Page): Promise<void> {
     await expect(clock).toBeVisible();
     await expect(clock).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     await expect(page.locator("#app-version")).toHaveText("v" + readVersion());
+    const sidebarButton = await page.locator("#inspector-button").boundingBox();
+    expect(sidebarButton).not.toBeNull();
+    if (sidebarButton !== null) {
+      expect(sidebarButton.x + sidebarButton.width).toBeLessThanOrEqual(width);
+    }
     /** 只检查页面宽度，画布内部平移不应导致整页滚动 */
     function hasOverflow(): boolean {
       return document.documentElement.scrollWidth > window.innerWidth;
     }
     expect(await page.evaluate(hasOverflow)).toBe(false);
+    /** 常用屏幕高度应完整显示工具，较矮窗口仍允许正常滚动 */
+    function toolbarFits(): boolean {
+      const tools = document.querySelector(".tools");
+      return tools instanceof HTMLElement && tools.scrollHeight <= tools.clientHeight;
+    }
+    expect(await page.evaluate(toolbarFits)).toBe(true);
     /** 检查画布中存在深色图形像素，不能仅凭 canvas 元素存在认定图形已显示 */
     function hasDrawing(): boolean {
       const canvas = document.querySelector(".lower-canvas");
@@ -158,10 +169,13 @@ async function boardPosition(page: Page, point: Point): Promise<Point> {
   if (host === null) {
     throw new Error("工作区未显示");
   }
-  const zoom = Math.max(0.15, Math.min(1, (host.width - 80) / 1200, (host.height - 80) / 800));
+  const canvas = page.locator("#canvas-host");
+  const zoom = Number(await canvas.getAttribute("data-zoom"));
+  const left = Number(await canvas.getAttribute("data-view-x"));
+  const top = Number(await canvas.getAttribute("data-view-y"));
   return {
-    x: host.x + (host.width - 1200 * zoom) / 2 + point.x * zoom,
-    y: host.y + (host.height - 800 * zoom) / 2 + point.y * zoom
+    x: host.x + left + point.x * zoom,
+    y: host.y + top + point.y * zoom
   };
 }
 
@@ -224,6 +238,8 @@ async function runToolsTest(page: Page): Promise<void> {
   page.on("pageerror", collectError);
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.locator(".upper-canvas")).toBeVisible();
+  await page.locator('[data-tool-group="lines"]').focus();
+  await page.keyboard.press("ArrowDown");
   await page.getByRole("button", { name: "连接线", exact: true }).click();
   const start = await boardPosition(page, { x: 230, y: 262 });
   const end = await boardPosition(page, { x: 990, y: 472 });

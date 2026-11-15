@@ -1,5 +1,6 @@
 import { Point } from "fabric";
 import type { Canvas, FabricObject } from "fabric";
+import type { Bounds } from "./types";
 
 const HOVER_COLOR = "#2563eb";
 const OUTLINE_WIDTH = 1.5;
@@ -8,6 +9,7 @@ const OUTLINE_WIDTH = 1.5;
 export class CanvasFeedback {
   private canvas: Canvas;
   private hovered: FabricObject | null = null;
+  private marquee: Bounds | null = null;
 
   /** 绑定库的绘制事件，在场景绘制后补充鼠标指向提示 */
   constructor(canvas: Canvas) {
@@ -24,8 +26,26 @@ export class CanvasFeedback {
     this.canvas.requestRenderAll();
   }
 
+  /** 右键框选与原生左键框选使用相同的轮廓颜色 */
+  setMarquee(bounds: Bounds | null): void {
+    this.marquee = bounds;
+    this.canvas.requestRenderAll();
+  }
+
   /** 将对象四角转换为屏幕位置，缩放画布时保持轮廓线宽不变 */
   private draw(event: { ctx: CanvasRenderingContext2D }): void {
+    if (this.marquee !== null) {
+      const bounds = this.marquee;
+      const start = new Point(bounds.x, bounds.y).transform(this.canvas.viewportTransform);
+      const context = event.ctx;
+      context.save();
+      context.strokeStyle = HOVER_COLOR;
+      context.fillStyle = "#2563eb22";
+      const zoom = this.canvas.getZoom();
+      context.fillRect(start.x, start.y, bounds.width * zoom, bounds.height * zoom);
+      context.strokeRect(start.x, start.y, bounds.width * zoom, bounds.height * zoom);
+      context.restore();
+    }
     const object = this.hovered;
     if (object === null || !object.visible || object.canvas !== this.canvas) {
       return;

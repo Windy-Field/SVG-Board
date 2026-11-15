@@ -1,6 +1,10 @@
 # Third-Party Notices
 
-The browser application uses Fabric.js, Flatten.js (including interval-tree), and Lucide. The application does not bundle Node.js-only canvas or jsdom runtimes in the browser. Development dependency licenses remain available in their installed packages and lockfile
+The browser application uses Fabric.js, Flatten.js (including interval-tree), Lucide, Marked, and DOMPurify. The application does not bundle Node.js-only canvas or jsdom runtimes in the browser. Development dependency licenses remain available in their installed packages and lockfile
+
+Marked 18.2.0: https://github.com/markedjs/marked (MIT, with Markdown BSD notices). The complete license is included in `licenses/marked-LICENSE` in built distributions and in `node_modules/marked/LICENSE` during development
+
+DOMPurify 3.4.18: https://github.com/cure53/DOMPurify (Apache-2.0 OR MPL-2.0). This distribution uses Apache-2.0. The complete license is included in `licenses/dompurify-LICENSE` in built distributions and in `node_modules/dompurify/LICENSE` during development
 
 ## Fabric.js 7.4.0
 

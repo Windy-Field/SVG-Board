@@ -25,10 +25,13 @@ async function screenPoint(page: Page, point: Point): Promise<Point> {
   if (host === null) {
     throw new Error("画布未显示");
   }
-  const zoom = Math.min(1, (host.width - 80) / 1200, (host.height - 80) / 800);
+  const canvas = page.locator("#canvas-host");
+  const zoom = Number(await canvas.getAttribute("data-zoom"));
+  const left = Number(await canvas.getAttribute("data-view-x"));
+  const top = Number(await canvas.getAttribute("data-view-y"));
   return {
-    x: host.x + (host.width - 1200 * zoom) / 2 + point.x * zoom,
-    y: host.y + (host.height - 800 * zoom) / 2 + point.y * zoom
+    x: host.x + left + point.x * zoom,
+    y: host.y + top + point.y * zoom
   };
 }
 
@@ -59,23 +62,32 @@ async function drag(page: Page, start: Point, end: Point): Promise<void> {
   await page.mouse.up();
 }
 
-/** 验证画完自动选中、立即拖动以及拖动取消，不能额外创建图形 */
+/** 验证连续绘制保留工具，主动切回选择后可以拖动和取消变换 */
 async function runDrawSelect(page: Page): Promise<void> {
   await openDocument(page, createDocument());
   await page.getByRole("button", { name: "矩形", exact: true }).click();
   const start = await screenPoint(page, { x: 200, y: 200 });
   const end = await screenPoint(page, { x: 400, y: 340 });
   await drag(page, start, end);
-  await expect(page.getByRole("button", { name: "选择", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "矩形", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
   await expect(page.locator("#selection-count")).toHaveText("已选择 1");
   const first = await savedDocument(page);
+  const nextStart = await screenPoint(page, { x: 600, y: 400 });
+  const nextEnd = await screenPoint(page, { x: 720, y: 500 });
+  await drag(page, nextStart, nextEnd);
+  await expect(page.locator("#object-count")).toHaveText("2 个对象");
+  await expect(page.getByRole("button", { name: "矩形", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await page.getByRole("button", { name: "选择", exact: true }).click();
   const center = await screenPoint(page, { x: 300, y: 270 });
   await drag(page, center, { x: center.x + 50, y: center.y + 35 });
   const moved = await savedDocument(page);
-  expect(moved.shapes.length).toBe(1);
+  expect(moved.shapes.length).toBe(2);
   expect(moved.shapes[0].x).toBeGreaterThan(first.shapes[0].x + 40);
   const dragCenter = await screenPoint(page, {
     x: moved.shapes[0].x + 100,
@@ -162,7 +174,7 @@ async function runPanSelection(page: Page): Promise<void> {
   const shifted = { x: center.x + 80, y: center.y + 30 };
   await drag(page, shifted, { x: shifted.x + 30, y: shifted.y + 25 });
   const moved = await savedDocument(page);
-  expect(moved.shapes[0].x).toBeGreaterThan(330);
+  expect(moved.shapes[0].x).toBeCloseTo(330, 4);
 }
 
 /** 检查框选后组合的首次拖动，以及取消选择后的再次整体拖动 */
@@ -179,7 +191,7 @@ async function runGroupSelection(page: Page): Promise<void> {
   const center = await screenPoint(page, { x: 220, y: 245 });
   await drag(page, center, { x: center.x + 40, y: center.y + 20 });
   const moved = await savedDocument(page);
-  expect(moved.shapes[0].x).toBeGreaterThan(190);
+  expect(moved.shapes[0].x).toBeCloseTo(190, 4);
   expect(moved.shapes[1].x - moved.shapes[0].x).toBeCloseTo(300, 4);
   await expect(page.locator("#selection-count")).toHaveText("已选择 2");
 }
@@ -298,7 +310,7 @@ async function testStrokeDragging(): Promise<void> {
   await runInteraction(runStrokeDragging);
 }
 
-test("绘制后选中并可立即拖动和取消", testDrawSelect);
+test("连续绘制保留工具并支持主动选择调整", testDrawSelect);
 test("细线仅在笔画附近响应选择", testPreciseSelection);
 test("Shift 多选与锁定约束一致", testMultiSelection);
 test("空格平移保留选区并恢复拖动", testPanSelection);

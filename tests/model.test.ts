@@ -64,7 +64,7 @@ test("复制保留内部依赖", testCopyRelations);
 function testDeleteRelations(): void {
   const document = createGeometryTemplate();
   const removed = deleteShapes(document, [document.shapes[2].id]);
-  assert.equal(removed, 5);
+  assert.equal(removed, 7);
   parseDocument(JSON.stringify(document));
 }
 test("删除不留下悬空关系", testDeleteRelations);

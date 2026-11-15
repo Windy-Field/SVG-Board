@@ -17,7 +17,9 @@ export const SHAPE_LABELS: Record<ShapeKind, string> = {
   pencil: "画笔",
   text: "文字",
   point: "点",
-  connector: "连接线"
+  connector: "连接线",
+  polygon: "多边形",
+  curve: "贝塞尔曲线"
 };
 
 /** 新建空白作品，返回可保存为项目文件的完整结构 */
@@ -28,7 +30,8 @@ export function createDocument(): BoardDocument {
     name: "未命名画板",
     width: BOARD_WIDTH,
     height: BOARD_HEIGHT,
-    shapes: []
+    shapes: [],
+    description: "# 项目介绍\n\n## 用途\n\n\n## 图示说明\n\n\n## 备注\n\n"
   };
 }
 
@@ -49,9 +52,16 @@ export function createShape(kind: ShapeKind, position: Point): Shape {
     opacity: 1,
     dash: false,
     text: "",
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: "sans-serif",
     textAlign: "middle",
+    textDirection: "horizontal",
+    bold: false,
+    italic: false,
+    underline: false,
+    points: [],
+    sides: 5,
+    bend: 0.5,
     locked: false,
     hidden: false,
     auxiliary: false,
@@ -162,6 +172,13 @@ export function resizeShape(shape: Shape, width: number, height: number): void {
 export class History {
   private snapshots: string[] = [];
   private index = -1;
+
+  /** 切换存档时清空历史，防止撤销回到另一份作品 */
+  reset(document: BoardDocument): void {
+    this.snapshots = [];
+    this.index = -1;
+    this.push(document);
+  }
 
   /** 写入当前作品，丢弃撤销后产生的旧分支，返回是否新增记录 */
   push(document: BoardDocument): boolean {

@@ -4,6 +4,7 @@ import ts from "typescript";
 
 const ROOT = process.cwd();
 const SOURCES = ["src", "scripts", "tests"];
+const CONFIG_FILES = ["vite.config.ts", "playwright.config.ts"];
 const ASSIGNMENT_OPERATORS = new Set([
   ts.SyntaxKind.PlusEqualsToken,
   ts.SyntaxKind.MinusEqualsToken,
@@ -59,6 +60,9 @@ function checkComment(source, node) {
       const text = source.text.slice(range.pos, range.end);
       if (/[\u4e00-\u9fff]/.test(text)) {
         found = true;
+      }
+      if (/[。.]\s*(\*\/)?$/.test(text)) {
+        report(source, node, "函数说明末尾不能有句号");
       }
     }
   }
@@ -123,15 +127,22 @@ function checkNode(source, node) {
   ts.forEachChild(node, visitChild);
 }
 
+const files = [];
 for (const folder of SOURCES) {
   for (const file of collectFiles(path.join(ROOT, folder))) {
-    const text = fs.readFileSync(file, "utf8");
-    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
-    checkNode(source, source);
-    if (/^\s*\/\/\s*@ts-(ignore|nocheck)/m.test(text)) {
-      console.error(file + " 不允许忽略类型检查");
-      failures = failures + 1;
-    }
+    files.push(file);
+  }
+}
+for (const file of CONFIG_FILES) {
+  files.push(path.join(ROOT, file));
+}
+for (const file of files) {
+  const text = fs.readFileSync(file, "utf8");
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  checkNode(source, source);
+  if (/^\s*\/\/\s*@ts-(ignore|nocheck)/m.test(text)) {
+    console.error(file + " 不允许忽略类型检查");
+    failures = failures + 1;
   }
 }
 if (failures > 0) {

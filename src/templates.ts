@@ -35,7 +35,7 @@ function addConnector(document: BoardDocument, start: Shape, end: Shape, label: 
   shape.relation = { kind: "connector", sources: [start.id, end.id] };
   shape.name = start.name + " → " + end.name;
   shape.text = label;
-  shape.fontSize = 14;
+  shape.fontSize = 18;
   shape.fill = "none";
   shape.stroke = "#64748b";
   shape.layer = -1;
@@ -46,8 +46,8 @@ function addConnector(document: BoardDocument, start: Shape, end: Shape, label: 
 export function createFlowTemplate(): BoardDocument {
   const document = createDocument();
   document.name = "课程作业 · 提交流程";
-  const title = addNode(document, "text", "课程作业提交流程", 160, 95, 760, 48, "none");
-  title.fontSize = 30;
+  const title = addNode(document, "text", "课程作业提交流程", 160, 95, 760, 52, "none");
+  title.fontSize = 32;
   title.textAlign = "start";
   const start = addNode(document, "ellipse", "开始", 160, 230, 140, 64, FLOW_GREEN);
   const input = addNode(document, "rect", "准备作业材料", 370, 230, 180, 64, FLOW_BLUE);
@@ -62,6 +62,13 @@ export function createFlowTemplate(): BoardDocument {
   addConnector(document, repair, input, "");
   addConnector(document, submit, end, "");
   updateRelations(document);
+  // 返回分支留出独立通道，避免补充材料的连线穿过主流程节点
+  const returnLine = document.shapes[11];
+  returnLine.relation = { kind: "none", sources: [] };
+  returnLine.x = 640;
+  returnLine.y = 472;
+  returnLine.width = -180;
+  returnLine.height = -178;
   return document;
 }
 
@@ -96,5 +103,23 @@ export function createGeometryTemplate(): BoardDocument {
   median.stroke = GEOMETRY_GREEN;
   median.dash = true;
   updateRelations(document);
+  // 顶点名用独立文本框，文字可以单独选中、移动和编辑
+  const vertices = [first, second, third, midpoint];
+  for (const vertex of vertices) {
+    const label = addNode(
+      document,
+      "text",
+      vertex.name,
+      vertex.x + 10,
+      vertex.y - 36,
+      48,
+      32,
+      "none"
+    );
+    label.fontSize = 24;
+    label.textAlign = "start";
+    label.relation = { kind: "label", sources: [vertex.id], offsetX: 10, offsetY: -36 };
+    vertex.text = "";
+  }
   return document;
 }

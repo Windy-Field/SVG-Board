@@ -1,0 +1,103 @@
+/* 高频指针操作即时响应，面板和菜单只使用轻微过渡 */
+.workspace {
+  transition: grid-template-columns 220ms var(--ease-out);
+}
+.inspector {
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 220ms var(--ease-out),
+    visibility 220ms;
+}
+button {
+  transition:
+    background-color 120ms var(--ease-out),
+    transform 120ms var(--ease-out);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.tool-menu {
+  min-width: 0;
+  opacity: 1;
+  transform: scale(1);
+  transform-origin: left top;
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 160ms var(--ease-out),
+    display 160ms allow-discrete,
+    overlay 160ms allow-discrete;
+}
+@starting-style {
+  .tool-menu:popover-open {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.tool-menu:not(:popover-open) {
+  opacity: 0;
+  transform: scale(0.97);
+}
+dialog {
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out),
+    display 180ms allow-discrete,
+    overlay 180ms allow-discrete;
+}
+dialog:not([open]) {
+  opacity: 0;
+  transform: scale(0.98);
+}
+@starting-style {
+  dialog[open] {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+.message {
+  opacity: 1;
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+.message-hidden {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+}
+.text-toolbar {
+  transition:
+    opacity 150ms var(--ease-out),
+    display 150ms allow-discrete;
+}
+.text-toolbar[hidden] {
+  opacity: 0;
+}
+@starting-style {
+  .text-toolbar:not([hidden]),
+  .message:not(.message-hidden) {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace {
+    transition: none;
+  }
+  .inspector,
+  .tool-menu,
+  dialog,
+  .message,
+  button {
+    transition-duration: 80ms;
+    transform: none;
+  }
+  .message,
+  .message-hidden {
+    transform: translateX(-50%);
+  }
+  .workspace.inspector-hidden .inspector,
+  .tool-menu:not(:popover-open),
+  dialog:not([open]) {
+    transform: none;
+  }
+}

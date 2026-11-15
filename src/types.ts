@@ -1,8 +1,25 @@
 export type ShapeKind =
-  "rect" | "ellipse" | "diamond" | "line" | "arrow" | "pencil" | "text" | "point" | "connector";
-export type Tool = ShapeKind | "select" | "hand";
+  | "rect"
+  | "ellipse"
+  | "diamond"
+  | "line"
+  | "arrow"
+  | "pencil"
+  | "text"
+  | "point"
+  | "connector"
+  | "polygon"
+  | "curve";
+export type Tool = ShapeKind | "select" | "hand" | "vertical-text" | "square" | "custom-polygon";
 export type RelationKind =
-  "none" | "connector" | "segment" | "midpoint" | "intersection" | "parallel" | "perpendicular";
+  | "none"
+  | "connector"
+  | "segment"
+  | "midpoint"
+  | "intersection"
+  | "parallel"
+  | "perpendicular"
+  | "label";
 
 /** 保存画布坐标，不包含浏览器窗口或缩放后的屏幕坐标 */
 export interface Point {
@@ -14,6 +31,8 @@ export interface Point {
 export interface Relation {
   kind: RelationKind;
   sources: string[];
+  offsetX?: number;
+  offsetY?: number;
 }
 
 /** 保存一个可编辑对象，线段使用起点位置与带正负号的宽高表示方向 */
@@ -35,6 +54,13 @@ export interface Shape {
   fontSize: number;
   fontFamily: string;
   textAlign: string;
+  textDirection: "horizontal" | "vertical";
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  points: Point[];
+  sides: number;
+  bend: number;
   locked: boolean;
   hidden: boolean;
   auxiliary: boolean;
@@ -52,6 +78,8 @@ export interface BoardDocument {
   width: number;
   height: number;
   shapes: Shape[];
+  description: string;
+  contentBounds?: Bounds;
 }
 
 /** 记录画布视口，平移和缩放不改变作品中的对象坐标 */

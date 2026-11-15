@@ -2,8 +2,9 @@ import { MAX_FILE_BYTES, parseDocument } from "./document";
 import { StaticCanvas } from "fabric";
 import { createFabricLabel, createFabricShape } from "./fabric-shapes";
 import { updateRelations } from "./geometry";
-import { compareLayers, getCombinedBounds } from "./model";
+import { compareLayers } from "./model";
 import type { BoardDocument, Shape } from "./types";
+import { prepareDocument, contentBounds, visualBounds } from "./content";
 
 const EXPORT_PADDING = 32;
 const PNG_SCALE = 2;
@@ -29,15 +30,15 @@ export function createSvg(document: BoardDocument, options: ExportOptions): stri
     }
     visible.push(shape);
   }
-  let bounds = { x: 0, y: 0, width: document.width, height: document.height };
+  let bounds = contentBounds(document);
   if (options.crop) {
-    const contentBounds = getCombinedBounds(visible);
-    if (contentBounds !== null) {
+    const visibleBounds = visualBounds(visible);
+    if (visibleBounds !== null) {
       bounds = {
-        x: contentBounds.x - EXPORT_PADDING,
-        y: contentBounds.y - EXPORT_PADDING,
-        width: Math.max(1, contentBounds.width + EXPORT_PADDING * 2),
-        height: Math.max(1, contentBounds.height + EXPORT_PADDING * 2)
+        x: visibleBounds.x - EXPORT_PADDING,
+        y: visibleBounds.y - EXPORT_PADDING,
+        width: Math.max(1, visibleBounds.width + EXPORT_PADDING * 2),
+        height: Math.max(1, visibleBounds.height + EXPORT_PADDING * 2)
       };
     }
   }
@@ -62,7 +63,7 @@ export function createSvg(document: BoardDocument, options: ExportOptions): stri
   const xml = new DOMParser().parseFromString(svg, "image/svg+xml");
   const metadata = xml.createElementNS("http://www.w3.org/2000/svg", "metadata");
   metadata.setAttribute("id", "svg-board-project");
-  metadata.textContent = JSON.stringify(document);
+  metadata.textContent = JSON.stringify(prepareDocument(document));
   xml.documentElement.prepend(metadata);
   return new XMLSerializer().serializeToString(xml.documentElement);
 }
@@ -92,7 +93,7 @@ export function getFileName(name: string): string {
 
 /** 下载完整项目，图形关系和辅助对象均保留 */
 export function saveProject(document: BoardDocument): void {
-  const text = JSON.stringify(document, null, 2);
+  const text = JSON.stringify(prepareDocument(document), null, 2);
   downloadBlob(
     new Blob([text], { type: "application/json" }),
     getFileName(document.name) + ".svgboard.json"
@@ -102,7 +103,7 @@ export function saveProject(document: BoardDocument): void {
 /** 打开项目或本工具生成的 SVG，仅提取元数据，不把外部 SVG 插入页面 */
 export async function openProject(file: File): Promise<BoardDocument> {
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("文件超过 8 MB，请打开更小的作品");
+    throw new Error("文件不能超过 8 MB");
   }
   const text = await file.text();
   if (text.trimStart().startsWith("<")) {
@@ -112,7 +113,7 @@ export async function openProject(file: File): Promise<BoardDocument> {
     }
     const metadata = xml.querySelector("metadata#svg-board-project");
     if (metadata === null || metadata.textContent === null) {
-      throw new Error("此 SVG 不含 SVG-Board 编辑信息，请打开本工具导出的 SVG 或项目文件");
+      throw new Error("SVG 不含本工具的编辑信息");
     }
     return parseDocument(metadata.textContent);
   }
@@ -132,7 +133,7 @@ export async function exportPng(svg: string, name: string): Promise<void> {
     canvas.height = Math.max(1, Math.ceil(image.height * scale));
     const context = canvas.getContext("2d");
     if (context === null) {
-      throw new Error("浏览器无法创建导出画布，请使用 SVG 导出");
+      throw new Error("PNG 导出不可用，请导出 SVG");
     }
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     /** 接收浏览器生成的 PNG，失败时交给 Promise 报错 */

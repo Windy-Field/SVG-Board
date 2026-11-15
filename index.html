@@ -5,11 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f5f6f8" />
     <meta name="description" content="SVG-Board 本地矢量绘图与动态几何编辑器" />
-    <meta author="Octorange/Windy-Field" />
+    <meta name="author" content="Octorange/Windy-Field" />
     <title>SVG-Board · 矢量工作台</title>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <p>正在打开 SVG-Board</p>
+    <p>本地首次使用请先运行 npm ci 和 npm run build</p>
+    <script>
+      /** 网页进入开发入口，本地双击进入已经构建的独立编辑器 */
+      function openEditor() {
+        let target = "editor.html";
+        if (window.location.protocol === "file:") {
+          target = "dist/editor.html";
+        }
+        window.location.replace(target);
+      }
+      openEditor();
+    </script>
   </body>
 </html>

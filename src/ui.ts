@@ -31,6 +31,20 @@ import {
   X,
   createIcons
 } from "lucide";
+import { Crosshair, Equal, GitCommitHorizontal, TextCursorInput, LockKeyhole } from "lucide";
+import {
+  Bold,
+  Italic,
+  Underline,
+  Dot,
+  RectangleHorizontal,
+  PenTool,
+  Spline,
+  BookOpen
+} from "lucide";
+import { isGroupedTool } from "./tool-definitions";
+import { createTextToolbar } from "./text-toolbar";
+import { setupToolGroups } from "./tool-groups";
 import type { Tool } from "./types";
 import packageInfo from "../package.json";
 
@@ -65,15 +79,17 @@ interface ToolDefinition {
 const TOOLS: ToolDefinition[] = [
   { tool: "select", label: "选择", icon: "mouse-pointer-2" },
   { tool: "hand", label: "平移", icon: "hand" },
-  { tool: "rect", label: "矩形", icon: "square" },
-  { tool: "ellipse", label: "椭圆", icon: "circle" },
-  { tool: "diamond", label: "判断框", icon: "diamond" },
+  { tool: "point", label: "几何点", icon: "dot" },
   { tool: "line", label: "线段", icon: "slash" },
+  { tool: "rect", label: "矩形", icon: "rectangle-horizontal" },
+  { tool: "diamond", label: "判断框", icon: "diamond" },
+  { tool: "polygon", label: "正多边形", icon: "pentagon" },
+  { tool: "ellipse", label: "椭圆", icon: "circle" },
   { tool: "arrow", label: "箭头", icon: "arrow-up-right" },
   { tool: "connector", label: "连接线", icon: "link-2" },
   { tool: "pencil", label: "自由画笔", icon: "pencil" },
   { tool: "text", label: "文字", icon: "type" },
-  { tool: "point", label: "几何点", icon: "pentagon" }
+  { tool: "vertical-text", label: "纵向文本框", icon: "text-cursor-input" }
 ];
 
 /** 返回静态图标标记，传入名称仅来自本模块配置 */
@@ -147,7 +163,20 @@ export function refreshIcons(): void {
       Type: Type,
       Undo2: Undo2,
       Ungroup: Ungroup,
-      X: X
+      X: X,
+      Crosshair: Crosshair,
+      Equal: Equal,
+      GitCommitHorizontal: GitCommitHorizontal,
+      TextCursorInput: TextCursorInput,
+      LockKeyhole: LockKeyhole,
+      Bold: Bold,
+      Italic: Italic,
+      Underline: Underline,
+      Dot: Dot,
+      RectangleHorizontal: RectangleHorizontal,
+      PenTool: PenTool,
+      Spline: Spline,
+      BookOpen: BookOpen
     }
   });
 }
@@ -157,6 +186,31 @@ export function mountInterface(): void {
   const app = getElement("app");
   let toolButtons = "";
   for (const definition of TOOLS) {
+    if (
+      definition.tool === "arrow" ||
+      definition.tool === "connector" ||
+      definition.tool === "vertical-text"
+    ) {
+      continue;
+    }
+    let group = "";
+    let badge = "";
+    if (definition.tool === "line") {
+      group = ' data-tool-group="lines" aria-haspopup="true" aria-expanded="false"';
+      badge = '<span class="tool-more" aria-hidden="true"></span>';
+    }
+    if (definition.tool === "text") {
+      group = ' data-tool-group="text" aria-haspopup="true" aria-expanded="false"';
+      badge = '<span class="tool-more" aria-hidden="true"></span>';
+    }
+    if (definition.tool === "rect") {
+      group = ' data-tool-group="rectangles" aria-haspopup="true" aria-expanded="false"';
+      badge = '<span class="tool-more" aria-hidden="true"></span>';
+    }
+    if (definition.tool === "polygon") {
+      group = ' data-tool-group="polygons" aria-haspopup="true" aria-expanded="false"';
+      badge = '<span class="tool-more" aria-hidden="true"></span>';
+    }
     toolButtons =
       toolButtons +
       '<button type="button" class="tool-button" data-tool="' +
@@ -165,9 +219,40 @@ export function mountInterface(): void {
       definition.label +
       '" title="' +
       definition.label +
-      '" aria-pressed="false">' +
+      '" aria-pressed="false"' +
+      group +
+      ">" +
       icon(definition.icon) +
+      badge +
       "</button>";
+  }
+  const constructions = [
+    { action: "segment", label: "两点线段", icon: "git-commit-horizontal" },
+    { action: "intersection", label: "交点", icon: "crosshair" },
+    { action: "midpoint", label: "中点", icon: "git-commit-horizontal" },
+    { action: "parallel", label: "平行线", icon: "equal" },
+    { action: "perpendicular", label: "垂线", icon: "plus" }
+  ];
+  let constructionButtons = "";
+  for (const construction of constructions) {
+    let button = commandButton(
+      "construct-" + construction.action,
+      construction.label,
+      construction.icon
+    );
+    if (construction.action === "midpoint") {
+      button = button.replace(
+        icon(construction.icon),
+        '<svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 12h6m6 0h6M3 9v6m18-6v6"/><circle cx="12" cy="12" r="3"/></svg>'
+      );
+    }
+    if (construction.action === "perpendicular") {
+      button = button.replace(
+        icon(construction.icon),
+        '<svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19h18M12 4v15m0-5h5v5"/><circle cx="12" cy="4" r="1"/></svg>'
+      );
+    }
+    constructionButtons = constructionButtons + button;
   }
   app.innerHTML = `
     <header class="topbar">
@@ -177,6 +262,7 @@ export function mountInterface(): void {
         ${commandButton("new", "新建画板", "plus")}
         ${commandButton("open", "打开作品", "folder-open")}
         ${commandButton("save", "保存项目", "save")}
+        ${commandButton("delete-archive", "删除当前存档", "trash-2")}
         <button type="button" class="primary-button" data-action="export">${icon("download")}<span>导出</span></button>
       </div>
     </header>
@@ -187,16 +273,18 @@ export function mountInterface(): void {
       <div class="command-spacer"></div>
       <button type="button" class="icon-button" id="grid-button" data-action="grid" aria-label="显示网格" title="显示网格" aria-pressed="true">${icon("grid-3x3")}</button>
       <button type="button" class="icon-button" id="snap-button" data-action="snap" aria-label="网格吸附" title="网格吸附" aria-pressed="false">${icon("magnet")}</button>
-      <button type="button" class="icon-button" data-action="toggle-inspector" aria-label="属性与图层" title="属性与图层">${icon("settings-2")}</button>
+      <button type="button" class="icon-button" id="readonly-button" data-action="readonly" aria-label="只读模式" title="只读模式" aria-pressed="false">${icon("lock-keyhole")}</button>
+      <button type="button" class="icon-button" id="inspector-button" data-action="toggle-inspector" aria-label="说明" title="说明" aria-pressed="true" aria-expanded="true" aria-controls="inspector">${icon("book-open")}</button>
     </div>
     <main class="workspace">
-      <nav class="tools" aria-label="绘图工具">${toolButtons}<div class="tool-divider"></div><label class="toolbar-color" title="新图形描边颜色"><input id="tool-stroke" type="color" value="#334155" aria-label="新图形描边颜色" /></label></nav>
-      <section id="canvas-host" class="canvas-host" aria-label="画布工作区"><span class="canvas-label">画板 01</span></section>
-      <aside class="inspector" id="inspector" aria-label="属性与图层">
-        <div class="inspector-tabs"><button type="button" id="properties-tab" class="active" data-action="tab-properties" aria-pressed="true">属性</button><button type="button" id="layers-tab" data-action="tab-layers" aria-pressed="false">图层 <span id="layer-count">0</span></button></div>
+      <nav class="tools" aria-label="绘图工具">${toolButtons}<div class="tool-divider"></div><div class="geometry-tools" role="group" aria-label="几何构造">${constructionButtons}</div><div class="tool-divider"></div><label class="toolbar-color" title="新图形描边颜色"><input id="tool-stroke" type="color" value="#334155" aria-label="新图形描边颜色" /></label></nav>
+      <section id="canvas-host" class="canvas-host" aria-label="画布工作区"><span class="canvas-label">无限画布</span></section>
+      <aside class="inspector" id="inspector" aria-label="说明">
+        <div class="inspector-tabs"><button type="button" id="properties-tab" class="active" data-action="tab-properties" aria-pressed="true">属性</button><button type="button" id="layers-tab" data-action="tab-layers" aria-pressed="false">图层 <span id="layer-count">0</span></button><button type="button" id="description-tab" data-action="tab-description" aria-pressed="false">说明</button></div>
         <div id="properties-panel"></div><div id="layers-panel" hidden></div>
-        <section class="construction-section"><h2>${icon("triangle")} 几何构造</h2><div class="construction-grid"><button type="button" data-action="construct-segment">两点线段</button><button type="button" data-action="construct-midpoint">中点</button><button type="button" data-action="construct-intersection">交点</button><button type="button" data-action="construct-parallel">平行线</button><button type="button" data-action="construct-perpendicular">垂线</button></div><p id="construction-status" class="relationship-status" role="status"></p></section>
-        <section class="template-section"><h2>画板模板</h2><button type="button" class="template-row" data-action="template-flow">${icon("link-2")}<span>程序流程图</span><span class="template-arrow">↗</span></button><button type="button" class="template-row" data-action="template-geometry">${icon("triangle")}<span>三角形中线</span><span class="template-arrow">↗</span></button></section>
+        <section id="description-panel" class="description-panel" hidden><div class="section-title"><h2>项目介绍</h2><button type="button" class="text-button" data-action="description-edit">编辑</button></div><textarea id="description-editor" aria-label="项目介绍 Markdown" rows="10" hidden></textarea><article id="description-preview" class="markdown-preview"></article></section>
+        <p id="construction-status" class="relationship-status" role="status"></p>
+        <section class="template-section"><div class="section-title"><h2>画图存档</h2>${commandButton("new-archive", "新建存档", "plus")}</div><div id="archive-list"></div><h2>参考示例</h2><button type="button" class="template-row" data-action="template-flow">${icon("link-2")}<span>程序流程图</span><span class="template-arrow">↗</span></button><button type="button" class="template-row" data-action="template-geometry">${icon("triangle")}<span>三角形中线</span><span class="template-arrow">↗</span></button></section>
         <div class="inspector-foot">SVG-Board</div>
       </aside>
     </main>
@@ -204,15 +292,24 @@ export function mountInterface(): void {
     <div id="message" class="message" role="status" hidden></div>
     <input id="file-input" type="file" accept=".json,.svg" hidden />
     <dialog id="text-dialog"><form id="text-form"><div class="dialog-heading"><h2>编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="10000"></textarea><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>
+    <dialog id="delete-dialog"><div class="dialog-heading"><h2>删除存档</h2>${commandButton("cancel-delete", "取消删除", "x")}</div><p id="delete-archive-name"></p><p>此操作无法撤销</p><div class="dialog-actions"><button type="button" data-action="cancel-delete">取消</button><button type="button" class="danger-button" data-action="confirm-delete">删除存档</button></div></dialog>
+    <div id="tool-menu" class="tool-menu" popover="manual" role="group" aria-label="工具模式"></div>
+    <dialog id="polygon-dialog"><form id="polygon-form"><div class="dialog-heading"><h2>正多边形</h2>${commandButton("close-polygon", "关闭多边形设置", "x")}</div><label for="polygon-sides">边数</label><input id="polygon-sides" type="number" min="3" max="32" step="1" value="5" /><div class="dialog-actions"><button type="submit" class="primary-button">开始绘制</button></div></form></dialog>
     <dialog id="export-dialog"><div class="dialog-heading"><h2>导出作品</h2>${commandButton("close-export", "关闭导出", "x")}</div><div class="export-options"><label><input id="export-crop" type="checkbox" checked /> 按内容裁剪</label><label><input id="export-transparent" type="checkbox" /> 透明背景</label><label><input id="export-auxiliary" type="checkbox" checked /> 隐藏辅助对象</label></div><div id="export-preview" class="export-preview"></div><p id="export-error" role="status"></p><div class="dialog-actions"><button type="button" data-action="export-svg">导出 SVG</button><button type="button" class="primary-button" data-action="export-png">导出 PNG</button></div></dialog>
   `;
   refreshIcons();
+  createTextToolbar(getElement("canvas-host"));
+  refreshIcons();
   updateClock();
   window.setInterval(updateClock, CLOCK_INTERVAL);
+  setupToolGroups();
 }
 
 /** 验证工具名，仅将已知工具交给画布 */
 export function isTool(value: string): value is Tool {
+  if (isGroupedTool(value)) {
+    return true;
+  }
   for (const definition of TOOLS) {
     if (definition.tool === value) {
       return true;

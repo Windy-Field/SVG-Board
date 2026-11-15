@@ -2,6 +2,7 @@ import { Circle, Ellipse, Line, Path, Polygon, Rect, Textbox } from "fabric";
 import type { FabricObject } from "fabric";
 import { getBounds } from "./model";
 import type { Shape } from "./types";
+import { curvePath, regularPoints } from "./shapes";
 
 /** 根据作品创建库中的几何对象，控制点与变换交给 Fabric */
 export function createFabricShape(shape: Shape): FabricObject {
@@ -29,16 +30,43 @@ export function createFabricShape(shape: Shape): FabricObject {
     if (object.width > 0 && object.height > 0) {
       object.set({ scaleX: width / object.width, scaleY: height / object.height });
     }
+  } else if (shape.kind === "polygon") {
+    let points = shape.points;
+    if (points.length < 3) {
+      points = regularPoints(width, height, shape.sides);
+    }
+    object = new Polygon(points);
+    if (object.width > 0 && object.height > 0) {
+      object.set({ scaleX: width / object.width, scaleY: height / object.height });
+    }
+  } else if (shape.kind === "curve") {
+    let path = shape.path;
+    if (path === "") {
+      path = curvePath(shape);
+    }
+    object = new Path(path, { fill: "" });
+    if (shape.path !== "" && object.width > 0 && object.height > 0) {
+      object.set({ scaleX: width / object.width, scaleY: height / object.height });
+    }
   } else if (shape.kind === "text") {
-    object = new Textbox(shape.text, {
+    let displayText = shape.text;
+    if (shape.textDirection === "vertical") {
+      displayText = Array.from(shape.text).join("\n");
+    }
+    object = new Textbox(displayText, {
       width: width,
       fontSize: shape.fontSize,
       fontFamily: shape.fontFamily,
+      fontWeight: getFontWeight(shape),
+      fontStyle: getFontStyle(shape),
+      underline: shape.underline,
       textAlign: getTextAlign(shape.textAlign),
       fill: shape.stroke,
       splitByGrapheme: true,
       padding: 4
     });
+    object.set({ minWidth: 12 });
+    // 使用字体的自然高度，不把一行标题强行拉伸成预设文本框高度
   }
   let fill = shape.fill;
   if (
@@ -46,7 +74,8 @@ export function createFabricShape(shape: Shape): FabricObject {
     shape.kind === "line" ||
     shape.kind === "arrow" ||
     shape.kind === "connector" ||
-    shape.kind === "pencil"
+    shape.kind === "pencil" ||
+    shape.kind === "curve"
   ) {
     fill = "";
   }
@@ -83,18 +112,36 @@ export function createFabricShape(shape: Shape): FabricObject {
     objectCaching: false,
     lockScalingFlip: true
   });
+  object.set({ strokeLineCap: "round", strokeLineJoin: "round" });
+  if (object instanceof Path && (shape.kind === "arrow" || shape.kind === "connector")) {
+    // 路径外框包含箭头两翼，不能把外框中心误当成线段中心
+    const angle = (shape.rotation * Math.PI) / 180;
+    object.left =
+      object.left + object.pathOffset.x * Math.cos(angle) - object.pathOffset.y * Math.sin(angle);
+    object.top =
+      object.top + object.pathOffset.x * Math.sin(angle) + object.pathOffset.y * Math.cos(angle);
+  }
+  if (shape.kind === "text") {
+    object.top = bounds.y + object.getScaledHeight() / 2;
+  }
   // 细线只响应实际笔画，避免点在线条外接矩形的空白处也被选中
   object.perPixelTargetFind = isStrokeShape(shape);
+  // 字体初始化可能缓存旧边界，位置设置完成后再计算命中与导出范围
+  object.setCoords();
   return object;
 }
 
 /** 判断对象是否只有笔画，用于设置精确命中 */
 function isStrokeShape(shape: Shape): boolean {
+  if (shape.kind === "text") {
+    return false;
+  }
   return (
     shape.kind === "line" ||
     shape.kind === "arrow" ||
     shape.kind === "connector" ||
     shape.kind === "pencil" ||
+    shape.kind === "curve" ||
     shape.fill === "none"
   );
 }
@@ -129,13 +176,20 @@ function createArrow(shape: Shape): Path {
   let path = "M " + startX + " " + startY + " L " + endX + " " + endY;
   let angle = Math.atan2(shape.height, shape.width);
   if (shape.kind === "connector") {
-    path = "M " + startX + " " + startY + " H 0 V " + endY + " H " + endX;
+    const bendX = startX + shape.width * shape.bend;
+    path = "M " + startX + " " + startY + " H " + bendX + " V " + endY + " H " + endX;
     angle = 0;
     if (shape.width < 0) {
       angle = Math.PI;
     }
   }
-  const headSize = 10;
+  if (shape.kind === "connector" && Math.abs(shape.width) < 1) {
+    angle = Math.PI / 2;
+    if (shape.height < 0) {
+      angle = -Math.PI / 2;
+    }
+  }
+  const headSize = Math.max(20, shape.strokeWidth * 5);
   const firstX = endX - headSize * Math.cos(angle - Math.PI / 6);
   const firstY = endY - headSize * Math.sin(angle - Math.PI / 6);
   const secondX = endX - headSize * Math.cos(angle + Math.PI / 6);
@@ -153,7 +207,8 @@ function createArrow(shape: Shape): Path {
     " L " +
     secondX +
     " " +
-    secondY;
+    secondY +
+    " Z";
   return new Path(path, { fill: "" });
 }
 
@@ -192,6 +247,9 @@ export function createFabricLabel(shape: Shape): Textbox | null {
     originX: "center",
     originY: "center",
     fontFamily: shape.fontFamily,
+    fontWeight: getFontWeight(shape),
+    fontStyle: getFontStyle(shape),
+    underline: shape.underline,
     fontSize: shape.fontSize,
     textAlign: getTextAlign(shape.textAlign),
     fill: shape.stroke,
@@ -201,4 +259,20 @@ export function createFabricLabel(shape: Shape): Textbox | null {
     evented: false,
     splitByGrapheme: true
   });
+}
+
+/** 将加粗开关转换为字体字重 */
+function getFontWeight(shape: Shape): number {
+  if (shape.bold) {
+    return 700;
+  }
+  return 400;
+}
+
+/** 返回文本的斜体设置 */
+function getFontStyle(shape: Shape): "italic" | "normal" {
+  if (shape.italic) {
+    return "italic";
+  }
+  return "normal";
 }

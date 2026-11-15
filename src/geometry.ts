@@ -72,6 +72,14 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
   if (first === undefined || first.hidden) {
     return false;
   }
+  if (relation.kind === "label") {
+    if (relation.offsetX === undefined || relation.offsetY === undefined) {
+      return false;
+    }
+    shape.x = first.x + relation.offsetX;
+    shape.y = first.y + relation.offsetY;
+    return true;
+  }
   if (relation.kind === "midpoint") {
     const endpoints = getLinePoints(first);
     const segment = new Flatten.Segment(

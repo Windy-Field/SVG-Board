@@ -184,9 +184,15 @@ export function constructShape(
     shape.dash = true;
     shape.auxiliary = true;
   } else {
-    throw new Error(
-      "两点线段需选两个点；中点需选一条线；交点需选两条线；平行线和垂线需选一条线与一个点"
-    );
+    let message = "请选择一条线和一个点";
+    if (kind === "segment") {
+      message = "请选择两个点";
+    } else if (kind === "midpoint") {
+      message = "请选择一条线段";
+    } else if (kind === "intersection") {
+      message = "请选择两条线段";
+    }
+    throw new Error(message);
   }
   shape.stroke = "#148063";
   shape.fill = "none";

@@ -1,4 +1,6 @@
 import "./styles.css";
+import "./workspace.css";
+import "./motion.css";
 import { BoardCanvas } from "./canvas";
 import { arrangeShapes, changeLayers, constructShape, deleteShapes, pasteShapes } from "./commands";
 import { parseDocument, STORAGE_KEY } from "./document";
@@ -7,8 +9,14 @@ import { updateRelations } from "./geometry";
 import { applyProperty, renderLayers, renderProperties } from "./inspector";
 import { createDocument, findShape, History, isDependent, moveShape } from "./model";
 import { createFlowTemplate, createGeometryTemplate } from "./templates";
-import { getElement, getInput, isTool, mountInterface } from "./ui";
+import { getElement, getInput, isTool, mountInterface, refreshIcons } from "./ui";
 import type { BoardDocument, RelationKind, Shape, Tool } from "./types";
+import { Archives } from "./archives";
+import { updateTextToolbar } from "./text-toolbar";
+import { updateDescription } from "./description";
+import { setSidebar } from "./motion";
+import { prepareDocument } from "./content";
+import { createFabricShape } from "./fabric-shapes";
 
 const MESSAGE_DURATION = 6000;
 const AUTOSAVE_DELAY = 300;
@@ -18,9 +26,15 @@ let clipboard: Shape[] = [];
 let textTarget = "";
 let messageTimer = 0;
 let saveTimer = 0;
+let archives: Archives;
+let deleteArchiveId = "";
+let previousSelection = "";
 
 /** 将未知异常转换为可显示的错误文字 */
 function errorMessage(error: unknown): string {
+  if (error instanceof SyntaxError) {
+    return "文件格式错误";
+  }
   if (error instanceof Error) {
     return error.message;
   }
@@ -30,20 +44,24 @@ function errorMessage(error: unknown): string {
 /** 显示不改变页面布局的状态信息，后续信息替换旧信息 */
 function notify(message: string): void {
   const element = getElement("message");
-  element.textContent = message;
+  element.textContent = message.trim().replace(/[，。；：、！？,.!?:;]+$/g, "");
   element.hidden = false;
+  element.classList.remove("message-hidden");
   window.clearTimeout(messageTimer);
   messageTimer = window.setTimeout(hideMessage, MESSAGE_DURATION);
 }
 
 /** 收起状态信息，不删除容器以保留无障碍播报入口 */
 function hideMessage(): void {
-  getElement("message").hidden = true;
+  getElement("message").classList.add("message-hidden");
 }
 
 /** 从本地自动恢复作品，损坏数据不覆盖原记录 */
 function loadInitialDocument(): BoardDocument {
   try {
+    if (archives.find(archives.active) !== undefined) {
+      return archives.open(archives.active);
+    }
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved !== null) {
       return parseDocument(saved);
@@ -63,14 +81,20 @@ function scheduleSave(): void {
 
 /** 保存前重新校验数据，存储不足时明确提示导出项目文件 */
 function saveLocal(): void {
+  if (board.readOnly) {
+    return;
+  }
   try {
-    const text = JSON.stringify(board.document);
+    const saved = prepareDocument(board.document);
+    const text = JSON.stringify(saved);
     parseDocument(text);
     localStorage.setItem(STORAGE_KEY, text);
+    archives.save(saved);
+    renderArchives();
     getElement("save-status").textContent = "已保存到此浏览器";
   } catch (error) {
     getElement("save-status").textContent = "自动保存失败";
-    notify(errorMessage(error) + "，请使用保存项目下载文件");
+    notify("自动保存失败，请下载项目文件");
   }
 }
 
@@ -86,14 +110,27 @@ function refreshPanels(): void {
     getElement("selection-count").textContent = "已选择 " + selected.length;
   }
   renderProperties(board.document, selected);
+  updateDescription(board.document.description, board.readOnly);
+  refreshTextToolbar();
+  const selection = board.selectedIds.join(",");
+  if (selected.length > 0 && selection !== previousSelection && board.tool === "select") {
+    setSidebar(true);
+    getElement("description-panel").hidden = true;
+    getElement("layers-panel").hidden = true;
+    getElement("properties-panel").hidden = false;
+    syncTabs("properties");
+  }
+  previousSelection = selection;
   renderLayers(board.document, board.selectedIds);
+  renderArchives();
+  applyReadOnlyControls();
   const undo = document.querySelector('[data-action="undo"]');
   const redo = document.querySelector('[data-action="redo"]');
   if (undo instanceof HTMLButtonElement) {
-    undo.disabled = !history.canUndo();
+    undo.disabled = board.readOnly || !history.canUndo();
   }
   if (redo instanceof HTMLButtonElement) {
-    redo.disabled = !history.canRedo();
+    redo.disabled = board.readOnly || !history.canRedo();
   }
   const invalid = updateRelations(board.document);
   const status = getElement("construction-status");
@@ -116,6 +153,11 @@ function commit(): void {
 function refreshViewport(): void {
   if (board !== undefined) {
     getElement("zoom-value").textContent = Math.round(board.viewport.zoom * 100) + "%";
+    const host = getElement("canvas-host");
+    host.dataset.viewX = String(board.viewport.x);
+    host.dataset.viewY = String(board.viewport.y);
+    host.dataset.zoom = String(board.viewport.zoom);
+    refreshTextToolbar();
   }
 }
 
@@ -131,13 +173,36 @@ function chooseTool(tool: string): void {
   if (!isTool(tool)) {
     return;
   }
+  if (tool === "polygon") {
+    getDialog("polygon-dialog").showModal();
+    return;
+  }
   board.setTool(tool);
 }
 
-/** 工具也可能由绘图完成后切换，按钮状态统一从画布同步 */
+/** 工具按钮统一从画布同步，放置对象后继续保留当前模式 */
 function refreshToolButtons(tool: Tool): void {
   for (const button of document.querySelectorAll("[data-tool]")) {
     button.setAttribute("aria-pressed", String(button.getAttribute("data-tool") === tool));
+  }
+  const lines = document.querySelector('[data-tool-group="lines"]');
+  if (
+    lines !== null &&
+    (tool === "line" || tool === "arrow" || tool === "connector" || tool === "curve")
+  ) {
+    lines.setAttribute("aria-pressed", "true");
+  }
+  const text = document.querySelector('[data-tool-group="text"]');
+  if (text !== null && (tool === "text" || tool === "vertical-text")) {
+    text.setAttribute("aria-pressed", "true");
+  }
+  const rectangles = document.querySelector('[data-tool-group="rectangles"]');
+  if (rectangles !== null && (tool === "rect" || tool === "square")) {
+    rectangles.setAttribute("aria-pressed", "true");
+  }
+  const polygons = document.querySelector('[data-tool-group="polygons"]');
+  if (polygons !== null && (tool === "polygon" || tool === "custom-polygon")) {
+    polygons.setAttribute("aria-pressed", "true");
   }
 }
 
@@ -152,6 +217,9 @@ function getDialog(id: string): HTMLDialogElement {
 
 /** 打开对象标签编辑，锁定对象不允许间接修改 */
 function editText(id: string): void {
+  if (board.readOnly) {
+    return;
+  }
   const shape = findShape(board.document, id);
   if (shape === undefined || shape.locked) {
     return;
@@ -169,8 +237,13 @@ function handleTextSubmit(event: SubmitEvent): void {
   event.preventDefault();
   const shape = findShape(board.document, textTarget);
   const input = getElement("text-value");
-  if (shape !== undefined && input instanceof HTMLTextAreaElement) {
+  if (!board.readOnly && shape !== undefined && input instanceof HTMLTextAreaElement) {
     shape.text = input.value;
+    if (shape.kind === "text") {
+      const object = createFabricShape(shape);
+      shape.height = object.height;
+      object.dispose();
+    }
     board.render();
     commit();
   }
@@ -224,13 +297,49 @@ async function handleClick(event: MouseEvent): Promise<void> {
     chooseTool(toolButton.getAttribute("data-tool") || "");
     return;
   }
+  const textToggle = event.target.closest("[data-text-toggle]");
+  if (textToggle instanceof HTMLButtonElement && !board.readOnly) {
+    const selected = board.getSelectedShapes();
+    if (selected.length === 1) {
+      const property = textToggle.dataset.textToggle;
+      if (property === "bold") {
+        selected[0].bold = !selected[0].bold;
+      }
+      if (property === "italic") {
+        selected[0].italic = !selected[0].italic;
+      }
+      if (property === "underline") {
+        selected[0].underline = !selected[0].underline;
+      }
+      board.render();
+      commit();
+    }
+    return;
+  }
+  const archiveButton = event.target.closest("[data-archive]");
+  if (archiveButton !== null) {
+    saveLocal();
+    openArchive(archiveButton.getAttribute("data-archive") || "");
+    return;
+  }
+  const archiveDelete = event.target.closest("[data-delete-archive]");
+  if (archiveDelete !== null) {
+    requestDeleteArchive(archiveDelete.getAttribute("data-delete-archive") || "");
+    return;
+  }
   const layer = event.target.closest("[data-layer]");
   if (layer !== null) {
-    board.select(layer.getAttribute("data-layer") || "", event.shiftKey);
+    board.select(
+      layer.getAttribute("data-layer") || "",
+      event.shiftKey || event.ctrlKey || event.metaKey
+    );
     return;
   }
   const visibility = event.target.closest("[data-visibility]");
   if (visibility !== null) {
+    if (board.readOnly) {
+      return;
+    }
     const shape = findShape(board.document, visibility.getAttribute("data-visibility") || "");
     if (shape !== undefined) {
       shape.hidden = !shape.hidden;
@@ -252,6 +361,10 @@ async function handleClick(event: MouseEvent): Promise<void> {
 
 /** 执行文件与视图命令，作品对象操作交给单独函数 */
 async function executeAction(action: string): Promise<void> {
+  if (board.readOnly && !isViewAction(action)) {
+    notify("只读模式");
+    return;
+  }
   if (action === "new") {
     replaceDocument(createDocument());
   } else if (action === "open") {
@@ -259,10 +372,37 @@ async function executeAction(action: string): Promise<void> {
   } else if (action === "save") {
     saveLocal();
     saveProject(board.document);
+  } else if (action === "new-archive") {
+    saveLocal();
+    board.setDocument(archives.create(createDocument()));
+    history.reset(board.document);
+    board.fit();
+    commit();
+  } else if (action === "delete-archive") {
+    requestDeleteArchive(archives.active);
+  } else if (action === "cancel-delete") {
+    getDialog("delete-dialog").close();
+  } else if (action === "confirm-delete") {
+    const next = archives.remove(deleteArchiveId);
+    getDialog("delete-dialog").close();
+    if (next !== null) {
+      board.setDocument(next);
+      history.reset(next);
+      board.fit();
+      scheduleSave();
+    }
+    refreshPanels();
+  } else if (action === "readonly") {
+    if (!board.readOnly) {
+      saveLocal();
+    }
+    board.setReadOnly(!board.readOnly);
+    getElement("readonly-button").setAttribute("aria-pressed", String(board.readOnly));
+    refreshPanels();
   } else if (action === "template-flow") {
-    replaceDocument(createFlowTemplate());
+    createReferenceArchive(createFlowTemplate());
   } else if (action === "template-geometry") {
-    replaceDocument(createGeometryTemplate());
+    createReferenceArchive(createGeometryTemplate());
   } else if (action === "undo" || action === "redo") {
     let snapshot: string | null = null;
     if (action === "redo") {
@@ -293,15 +433,31 @@ async function executeAction(action: string): Promise<void> {
     }
     board.render();
   } else if (action === "toggle-inspector") {
-    getElement("inspector").classList.toggle("mobile-open");
+    const workspace = document.querySelector(".workspace");
+    if (workspace !== null) {
+      setSidebar(workspace.classList.contains("inspector-hidden"));
+    }
+  } else if (action === "tab-description") {
+    getElement("properties-panel").hidden = true;
+    getElement("layers-panel").hidden = true;
+    getElement("description-panel").hidden = false;
+    syncTabs("description");
+  } else if (action === "description-edit") {
+    const editor = getElement("description-editor");
+    editor.hidden = !editor.hidden;
+    getElement("description-preview").hidden = !editor.hidden;
+  } else if (action === "close-polygon") {
+    getDialog("polygon-dialog").close();
   } else if (action === "tab-layers" || action === "tab-properties") {
     const layers = action === "tab-layers";
+    getElement("description-panel").hidden = true;
     getElement("properties-panel").hidden = layers;
     getElement("layers-panel").hidden = !layers;
     getElement("layers-tab").classList.toggle("active", layers);
     getElement("properties-tab").classList.toggle("active", !layers);
     getElement("layers-tab").setAttribute("aria-pressed", String(layers));
     getElement("properties-tab").setAttribute("aria-pressed", String(!layers));
+    syncTabs(action.replace("tab-", ""));
   } else if (action === "close-text") {
     getDialog("text-dialog").close();
   } else if (action === "close-export") {
@@ -367,7 +523,7 @@ function executeObjectAction(action: string): void {
   } else if (action === "delete") {
     const count = deleteShapes(board.document, board.selectedIds);
     if (count > board.selectedIds.length) {
-      notify("同时删除了依赖这些对象的构造，可撤销恢复");
+      notify("已同时删除关联构造，可撤销");
     }
     board.selectedIds = [];
   } else if (action === "edit-text") {
@@ -405,6 +561,9 @@ function executeObjectAction(action: string): void {
 
 /** 修改单个属性，先验证控件范围，再写入模型 */
 function updateProperty(control: HTMLInputElement | HTMLSelectElement): void {
+  if (board.readOnly) {
+    return;
+  }
   try {
     const changed = applyProperty(board.document, board.getSelectedShapes(), control);
     if (!changed) {
@@ -421,7 +580,24 @@ function updateProperty(control: HTMLInputElement | HTMLSelectElement): void {
 /** 处理属性、作品名称和导出选项变化 */
 function handleChange(event: Event): void {
   const control = event.target;
+  if (
+    control instanceof HTMLTextAreaElement &&
+    control.id === "description-editor" &&
+    !board.readOnly
+  ) {
+    board.document.description = control.value;
+    commit();
+    return;
+  }
   if (!(control instanceof HTMLInputElement) && !(control instanceof HTMLSelectElement)) {
+    return;
+  }
+  if (board.readOnly && !control.id.startsWith("export-")) {
+    return;
+  }
+  if (control.dataset.textProperty !== undefined) {
+    control.dataset.property = control.dataset.textProperty;
+    updateProperty(control);
     return;
   }
   if (control.id === "document-name") {
@@ -439,6 +615,9 @@ function handleChange(event: Event): void {
 
 /** 键盘操作不干扰输入框、原生文本编辑或打开的对话框 */
 async function handleKeyDown(event: KeyboardEvent): Promise<void> {
+  if (event.defaultPrevented) {
+    return;
+  }
   if (
     event.target instanceof HTMLInputElement ||
     event.target instanceof HTMLTextAreaElement ||
@@ -485,6 +664,9 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
     hideMessage();
     return;
   } else if (key.startsWith("arrow")) {
+    if (board.readOnly) {
+      return;
+    }
     event.preventDefault();
     let distance = 1;
     if (event.shiftKey) {
@@ -536,7 +718,19 @@ function handlePageHide(): void {
 }
 
 mountInterface();
+if (window.matchMedia("(max-width: 45rem)").matches) {
+  const workspace = document.querySelector(".workspace");
+  if (workspace !== null) {
+    workspace.classList.add("inspector-hidden");
+    getElement("inspector-button").setAttribute("aria-pressed", "false");
+    getElement("inspector-button").setAttribute("aria-expanded", "false");
+  }
+}
+archives = new Archives();
 const initial = loadInitialDocument();
+if (archives.items.length === 0) {
+  archives.create(initial);
+}
 board = new BoardCanvas(getElement("canvas-host"), initial, {
   changed: commit,
   selected: refreshPanels,
@@ -553,4 +747,163 @@ document.addEventListener("change", handleChange);
 document.addEventListener("keydown", handleKeyDown);
 getInput("file-input").addEventListener("change", handleFileChange);
 getElement("text-form").addEventListener("submit", handleTextSubmit);
+getElement("polygon-form").addEventListener("submit", handlePolygonSubmit);
 window.addEventListener("pagehide", handlePageHide);
+
+/** 只读模式允许浏览、切换视图和导出，不允许改变作品或存档 */
+function isViewAction(action: string): boolean {
+  return [
+    "readonly",
+    "copy",
+    "save",
+    "export",
+    "close-export",
+    "export-svg",
+    "export-png",
+    "zoom-in",
+    "zoom-out",
+    "reset-zoom",
+    "fit",
+    "grid",
+    "snap",
+    "toggle-inspector",
+    "tab-layers",
+    "tab-properties",
+    "tab-description",
+    "cancel-delete"
+  ].includes(action);
+}
+
+/** 按当前作品状态禁用修改入口，快捷键另由命令入口统一校验 */
+function applyReadOnlyControls(): void {
+  const readonly = board.readOnly;
+  getInput("document-name").disabled = readonly;
+  for (const control of document.querySelectorAll("[data-property]")) {
+    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement) {
+      if (readonly) {
+        control.disabled = true;
+      }
+    }
+  }
+  for (const button of document.querySelectorAll(
+    "button[data-action], button[data-tool], input#tool-stroke"
+  )) {
+    if (!(button instanceof HTMLButtonElement) && !(button instanceof HTMLInputElement)) {
+      continue;
+    }
+    if (button instanceof HTMLInputElement) {
+      button.disabled = readonly;
+      continue;
+    }
+    const action = button.dataset.action;
+    if (action !== undefined && action !== "undo" && action !== "redo") {
+      button.disabled = readonly && !isViewAction(action);
+    }
+    if (button.dataset.tool !== undefined) {
+      button.disabled =
+        readonly && button.dataset.tool !== "select" && button.dataset.tool !== "hand";
+    }
+  }
+}
+
+/** 显示本地存档列表，按钮上的删除命令与打开命令分开 */
+function renderArchives(): void {
+  const list = getElement("archive-list");
+  list.replaceChildren();
+  for (const archive of archives.items) {
+    const row = document.createElement("div");
+    row.className = "archive-row";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.archive = archive.id;
+    button.textContent = archive.document.name;
+    button.title = archive.document.name;
+    button.setAttribute("aria-pressed", String(archives.active === archive.id));
+    row.append(button);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.dataset.deleteArchive = archive.id;
+    remove.className = "icon-button";
+    remove.title = "删除存档";
+    remove.setAttribute("aria-label", "删除存档：" + archive.document.name);
+    remove.disabled = board.readOnly;
+    remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>';
+    row.append(remove);
+    list.append(row);
+  }
+  refreshIcons();
+}
+
+/** 切换存档后重置撤销记录，避免修改跨存档混在一起 */
+function openArchive(id: string): void {
+  const document = archives.open(id);
+  board.setDocument(document);
+  history.reset(document);
+  board.fit();
+  refreshPanels();
+  if (!board.readOnly) {
+    scheduleSave();
+  }
+}
+
+/** 删除前展示存档名称，只有明确确认后才移除本地数据 */
+function requestDeleteArchive(id: string): void {
+  if (board.readOnly) {
+    return;
+  }
+  if (archives.find(id) === undefined) {
+    archives.save(board.document);
+    id = archives.active;
+  }
+  const item = archives.find(id);
+  if (item === undefined) {
+    return;
+  }
+  deleteArchiveId = id;
+  getElement("delete-archive-name").textContent = "删除「" + item.document.name + "」？";
+  getDialog("delete-dialog").showModal();
+}
+
+/** 从参考图新建独立存档，先保留当前作品，避免切换示例覆盖原存档 */
+function createReferenceArchive(document: BoardDocument): void {
+  saveLocal();
+  const next = archives.create(document);
+  board.setDocument(next);
+  history.reset(next);
+  board.fit();
+  commit();
+}
+
+/** 更新选区上方的文字配置，不重建正在输入的控件 */
+function refreshTextToolbar(): void {
+  if (board === undefined) {
+    return;
+  }
+  const shapes = board.getSelectedShapes();
+  let selected: Shape | undefined;
+  if (shapes.length === 1) {
+    selected = shapes[0];
+  }
+  updateTextToolbar(selected, board.getSelectionBounds(), board.readOnly);
+}
+
+/** 面板标签使用统一选中状态 */
+function syncTabs(active: string): void {
+  for (const name of ["properties", "layers", "description"]) {
+    const button = getElement(name + "-tab");
+    button.classList.toggle("active", name === active);
+    button.setAttribute("aria-pressed", String(name === active));
+  }
+}
+
+/** 检查边数后进入正多边形工具，实际大小由拖动决定 */
+function handlePolygonSubmit(event: SubmitEvent): void {
+  event.preventDefault();
+  const input = getInput("polygon-sides");
+  if (!input.reportValidity() || board.readOnly) {
+    return;
+  }
+  board.polygonSides = Number(input.value);
+  board.setTool("polygon");
+  getDialog("polygon-dialog").close();
+}

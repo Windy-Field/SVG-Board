@@ -9,6 +9,7 @@ import {
 } from "./model";
 import { commandButton, getElement, refreshIcons } from "./ui";
 import type { BoardDocument, Shape } from "./types";
+import { fontOptions } from "./fonts";
 
 /** 校验属性控件并更新作品，返回是否需要提交修改 */
 export function applyProperty(
@@ -67,7 +68,14 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
   if (!Number.isFinite(value)) {
     return false;
   }
-  const fixed = shape.locked || isDependent(shape);
+  const fixed = shape.locked || (isDependent(shape) && !isLine(shape) && shape.kind !== "text");
+  if (
+    !fixed &&
+    (isLine(shape) || shape.kind === "text") &&
+    ["x", "y", "width", "height", "rotation"].includes(property)
+  ) {
+    shape.relation = { kind: "none", sources: [] };
+  }
   if (property === "x" && !fixed) {
     moveShape(shape, value - shape.x, 0);
   } else if (property === "y" && !fixed) {
@@ -218,7 +226,7 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     return;
   }
   const shape = selected[0];
-  const fixed = shape.locked || isDependent(shape);
+  const fixed = shape.locked || (isDependent(shape) && !isLine(shape) && shape.kind !== "text");
   const point = shape.kind === "point";
   let markup =
     '<section class="property-section"><div class="section-title"><h2>' +
@@ -256,9 +264,13 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     checkboxField("虚线", "dash", shape.dash) +
     checkboxField("辅助对象", "auxiliary", shape.auxiliary) +
     "</div></section>";
-  markup =
-    markup +
-    '<section class="property-section"><div class="section-title"><h2>文字</h2><button type="button" class="text-button" data-action="edit-text">编辑</button></div><label class="property-field"><span>字体</span><select data-property="fontFamily" aria-label="字体"><option value="sans-serif">无衬线</option><option value="serif">衬线</option><option value="monospace">等宽</option></select></label><label class="property-field"><span>对齐</span><select data-property="textAlign" aria-label="文字对齐"><option value="start">左对齐</option><option value="middle">居中</option><option value="end">右对齐</option></select></label></section>';
+  if (shape.kind !== "text") {
+    markup =
+      markup +
+      '<section class="property-section"><div class="section-title"><h2>文字</h2><button type="button" class="text-button" data-action="edit-text">编辑</button></div><label class="property-field"><span>字体</span><select data-property="fontFamily" aria-label="字体">' +
+      fontOptions() +
+      '</select></label><label class="property-field"><span>对齐</span><select data-property="textAlign" aria-label="文字对齐"><option value="start">左对齐</option><option value="middle">居中</option><option value="end">右对齐</option></select></label></section>';
+  }
   markup =
     markup +
     '<section class="property-section"><h2>对象管理</h2><div class="checkbox-row">' +

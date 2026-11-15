@@ -1,6 +1,4 @@
-/* Hallmark · macrostructure: Workbench · genre: modern-minimal · theme: Cobalt
- * 面向课程作业的浅色紧凑工作台，画布优先，不采用营销页结构
- */
+/* 画布为主体，工具沿左侧排列，选区上方显示文字配置 */
 @import "../tokens.css";
 
 * {
@@ -14,7 +12,7 @@ body {
 }
 body {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 15px;
   color: var(--color-ink);
   background: var(--color-workspace);
 }
@@ -93,7 +91,7 @@ svg.lucide {
 }
 h1 {
   margin: 0;
-  font: 700 21px var(--font-display);
+  font: 700 22px var(--font-display);
 }
 h1 span {
   font-weight: 400;
@@ -118,7 +116,7 @@ h1 span {
 }
 #save-status {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .file-actions {
   margin-left: auto;
@@ -175,12 +173,12 @@ h1 span {
   border-color: transparent;
   padding: 6px 8px;
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
 }
 .workspace {
   position: relative;
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr) 276px;
+  grid-template-columns: 72px minmax(0, 1fr) 300px;
   min-height: 0;
 }
 .tools {
@@ -188,12 +186,13 @@ h1 span {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: var(--space-md) 0;
+  padding: var(--space-lg) 0;
   border-right: 1px solid var(--color-rule);
   background: var(--color-paper);
   overflow-y: auto;
 }
 .tool-button {
+  position: relative;
   width: 40px;
   height: 40px;
   display: grid;
@@ -201,6 +200,86 @@ h1 span {
   border-color: transparent;
   background: transparent;
   flex-shrink: 0;
+}
+.geometry-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 6px;
+}
+.tools .icon-button,
+.tools .tool-button {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+.tools svg.lucide {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.tool-more {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-right: 5px solid currentColor;
+  border-top: 5px solid transparent;
+}
+.tool-menu {
+  position: fixed;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--color-rule);
+  border-radius: 6px;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  min-width: 150px;
+}
+.tool-menu:popover-open {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  gap: 4px;
+}
+.tool-menu button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  min-height: 40px;
+  padding: 8px;
+}
+.workspace.inspector-hidden {
+  grid-template-columns: 72px minmax(0, 1fr) 0px;
+}
+.workspace.inspector-hidden .inspector {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(24px);
+  pointer-events: none;
+}
+.archive-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.archive-row > button:first-child {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  padding: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.danger-button {
+  background: var(--color-error);
+  color: var(--color-paper);
 }
 .tool-divider {
   width: 24px;
@@ -229,7 +308,7 @@ h1 span {
   min-width: 0;
   min-height: 0;
   overflow: clip;
-  background: var(--color-workspace);
+  background: var(--color-paper);
   touch-action: none;
 }
 .canvas-container {
@@ -240,7 +319,7 @@ h1 span {
   position: absolute;
   left: 16px;
   top: 14px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-muted);
   pointer-events: none;
   z-index: var(--z-raised);
@@ -252,6 +331,7 @@ h1 span {
   border-left: 1px solid var(--color-rule);
   overflow-y: auto;
   min-height: 0;
+  min-width: 0;
 }
 .inspector-tabs {
   display: flex;
@@ -267,26 +347,25 @@ h1 span {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   padding: 0 4px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .inspector-tabs button.active {
   border-bottom-color: var(--color-accent);
   color: var(--color-accent);
 }
 .inspector-tabs span {
-  font-size: 10px;
+  font-size: 11px;
   margin-left: 4px;
   color: var(--color-muted);
 }
 .property-section,
-.construction-section,
 .template-section {
   padding: 20px var(--space-lg);
   border-bottom: 1px solid var(--color-rule);
 }
 h2 {
   margin: 0 0 16px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -308,7 +387,7 @@ h2 .lucide {
 }
 .section-title > span {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .section-title .icon-button {
   height: 24px;
@@ -327,7 +406,7 @@ h2 .lucide {
 }
 .property-field > span {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .property-field input,
 .property-field select {
@@ -338,14 +417,14 @@ h2 .lucide {
   border: 1px solid var(--color-input-rule);
   border-radius: 4px;
   background: var(--color-paper);
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .canvas-background {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-muted);
   margin-top: 12px;
 }
@@ -369,7 +448,7 @@ h2 .lucide {
   align-items: center;
   gap: 6px;
   min-height: 28px;
-  font-size: 11px;
+  font-size: 12px;
 }
 input[type="checkbox"] {
   accent-color: var(--color-accent);
@@ -381,7 +460,7 @@ input[type="checkbox"] {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .color-field > span:first-child {
   width: 76px;
@@ -403,21 +482,19 @@ input[type="checkbox"] {
   justify-content: space-between;
   margin-top: 12px;
 }
-.construction-grid,
 .multi-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
 }
-.construction-grid button,
 .multi-actions button {
   min-height: 32px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 6px;
 }
 .relationship-status {
   color: var(--color-error);
-  font-size: 11px;
+  font-size: 12px;
   margin: 12px 0 0;
 }
 .relationship-status:empty {
@@ -425,7 +502,7 @@ input[type="checkbox"] {
 }
 .relationship p {
   margin: 6px 0;
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 .template-row {
@@ -437,7 +514,7 @@ input[type="checkbox"] {
   background: transparent;
   height: 42px;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .template-row svg {
   width: 17px;
@@ -452,7 +529,7 @@ input[type="checkbox"] {
   display: flex;
   justify-content: space-between;
   padding: 20px 16px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-muted);
 }
 .layer-row {
@@ -470,7 +547,7 @@ input[type="checkbox"] {
   border: 0;
   background: transparent;
   text-align: left;
-  font-size: 12px;
+  font-size: 13px;
 }
 .layer-row button:first-child {
   flex: 1;
@@ -480,7 +557,7 @@ input[type="checkbox"] {
 }
 .empty-layer {
   margin: 24px 16px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .statusbar {
@@ -491,7 +568,7 @@ input[type="checkbox"] {
   padding: 0 16px;
   background: var(--color-paper);
   border-top: 1px solid var(--color-rule);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-muted);
 }
 .status-left {
@@ -532,7 +609,7 @@ input[type="checkbox"] {
 }
 #zoom-value {
   width: 48px;
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .zoom-controls .icon-button {
@@ -578,7 +655,7 @@ dialog::backdrop {
 }
 .dialog-heading h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
 }
 dialog label {
   font-size: 13px;
@@ -641,6 +718,9 @@ dialog textarea {
   }
 }
 @media (max-width: 60rem) {
+  .workspace.inspector-hidden {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
   .workspace {
     grid-template-columns: 56px minmax(0, 1fr) 248px;
   }
@@ -649,7 +729,7 @@ dialog textarea {
     gap: 16px;
   }
   .brand h1 {
-    font-size: 18px;
+    font-size: 19px;
   }
   .document-heading {
     padding-left: 16px;
@@ -672,7 +752,7 @@ dialog textarea {
     grid-template-columns: 52px minmax(0, 1fr);
   }
   .inspector {
-    display: none;
+    display: flex;
     position: absolute;
     right: 0;
     top: 0;
@@ -680,8 +760,8 @@ dialog textarea {
     width: min(276px, calc(100% - 52px));
     z-index: var(--z-raised);
   }
-  .inspector.mobile-open {
-    display: flex;
+  .workspace.inspector-hidden {
+    grid-template-columns: 52px minmax(0, 1fr);
   }
   .brand h1 {
     display: none;
@@ -713,15 +793,15 @@ dialog textarea {
     display: none;
   }
   .commandbar {
-    gap: 6px;
+    gap: 0;
     padding: 0 6px;
   }
   .command-group {
     gap: 0;
-    padding-right: 6px;
+    padding-right: 2px;
   }
   .commandbar .icon-button {
-    width: 32px;
+    width: 28px;
   }
   .object-status {
     display: none;
@@ -745,6 +825,12 @@ dialog textarea {
     width: 44px;
     height: 44px;
   }
+  .tools .tool-button,
+  .tools .icon-button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
 }
 @media (pointer: coarse) {
   .icon-button {
@@ -752,9 +838,6 @@ dialog textarea {
   }
   .property-field input,
   .property-field select {
-    min-height: 44px;
-  }
-  .construction-grid button {
     min-height: 44px;
   }
 }
