@@ -1,0 +1,30 @@
+:root {
+  --color-paper: oklch(99% 0.002 250);
+  --color-workspace: oklch(96% 0.004 250);
+  --color-hover: oklch(94% 0.006 250);
+  --color-rule: oklch(89% 0.008 250);
+  --color-input-rule: oklch(75% 0.012 250);
+  --color-ink: oklch(25% 0.015 250);
+  --color-muted: oklch(48% 0.015 250);
+  --color-accent: oklch(52% 0.2 260);
+  --color-accent-ink: oklch(99% 0.002 250);
+  --color-selected: oklch(95% 0.025 260);
+  --color-focus: oklch(45% 0.2 260);
+  --color-success: oklch(45% 0.1 160);
+  --color-error: oklch(48% 0.18 25);
+  --color-backdrop: oklch(20% 0.01 250 / 0.3);
+  --font-body: "Microsoft YaHei", "PingFang SC", sans-serif;
+  --font-display: "Trebuchet MS", "Microsoft YaHei", sans-serif;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --radius-control: 6px;
+  --radius-dialog: 8px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-micro: 120ms;
+  --z-raised: 10;
+  --z-toast: 500;
+}

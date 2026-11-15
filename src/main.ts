@@ -1,0 +1,556 @@
+import "./styles.css";
+import { BoardCanvas } from "./canvas";
+import { arrangeShapes, changeLayers, constructShape, deleteShapes, pasteShapes } from "./commands";
+import { parseDocument, STORAGE_KEY } from "./document";
+import { createSvg, downloadBlob, exportPng, getFileName, openProject, saveProject } from "./files";
+import { updateRelations } from "./geometry";
+import { applyProperty, renderLayers, renderProperties } from "./inspector";
+import { createDocument, findShape, History, isDependent, moveShape } from "./model";
+import { createFlowTemplate, createGeometryTemplate } from "./templates";
+import { getElement, getInput, isTool, mountInterface } from "./ui";
+import type { BoardDocument, RelationKind, Shape, Tool } from "./types";
+
+const MESSAGE_DURATION = 6000;
+const AUTOSAVE_DELAY = 300;
+let board: BoardCanvas;
+const history = new History();
+let clipboard: Shape[] = [];
+let textTarget = "";
+let messageTimer = 0;
+let saveTimer = 0;
+
+/** 将未知异常转换为可显示的错误文字 */
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "操作失败，请重试";
+}
+
+/** 显示不改变页面布局的状态信息，后续信息替换旧信息 */
+function notify(message: string): void {
+  const element = getElement("message");
+  element.textContent = message;
+  element.hidden = false;
+  window.clearTimeout(messageTimer);
+  messageTimer = window.setTimeout(hideMessage, MESSAGE_DURATION);
+}
+
+/** 收起状态信息，不删除容器以保留无障碍播报入口 */
+function hideMessage(): void {
+  getElement("message").hidden = true;
+}
+
+/** 从本地自动恢复作品，损坏数据不覆盖原记录 */
+function loadInitialDocument(): BoardDocument {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved !== null) {
+      return parseDocument(saved);
+    }
+  } catch (error) {
+    notify("无法自动恢复：" + errorMessage(error));
+  }
+  return createFlowTemplate();
+}
+
+/** 延迟自动保存，避免拖动过程反复写入浏览器存储 */
+function scheduleSave(): void {
+  getElement("save-status").textContent = "正在保存";
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(saveLocal, AUTOSAVE_DELAY);
+}
+
+/** 保存前重新校验数据，存储不足时明确提示导出项目文件 */
+function saveLocal(): void {
+  try {
+    const text = JSON.stringify(board.document);
+    parseDocument(text);
+    localStorage.setItem(STORAGE_KEY, text);
+    getElement("save-status").textContent = "已保存到此浏览器";
+  } catch (error) {
+    getElement("save-status").textContent = "自动保存失败";
+    notify(errorMessage(error) + "，请使用保存项目下载文件");
+  }
+}
+
+/** 更新状态栏、属性与图层，模型与界面不保存两份对象数据 */
+function refreshPanels(): void {
+  const selected = board.getSelectedShapes();
+  getInput("document-name").value = board.document.name;
+  getElement("object-count").textContent = board.document.shapes.length + " 个对象";
+  getElement("layer-count").textContent = String(board.document.shapes.length);
+  getElement("board-size").textContent = board.document.width + " × " + board.document.height;
+  getElement("selection-count").textContent = "";
+  if (selected.length > 0) {
+    getElement("selection-count").textContent = "已选择 " + selected.length;
+  }
+  renderProperties(board.document, selected);
+  renderLayers(board.document, board.selectedIds);
+  const undo = document.querySelector('[data-action="undo"]');
+  const redo = document.querySelector('[data-action="redo"]');
+  if (undo instanceof HTMLButtonElement) {
+    undo.disabled = !history.canUndo();
+  }
+  if (redo instanceof HTMLButtonElement) {
+    redo.disabled = !history.canRedo();
+  }
+  const invalid = updateRelations(board.document);
+  const status = getElement("construction-status");
+  status.textContent = "";
+  if (invalid.size > 0) {
+    status.textContent = invalid.size + " 个构造当前无有效结果";
+  }
+}
+
+/** 完成一次作品修改后更新关系、历史和自动保存 */
+function commit(): void {
+  updateRelations(board.document);
+  if (history.push(board.document)) {
+    scheduleSave();
+  }
+  refreshPanels();
+}
+
+/** 视口变化只更新缩放数值，不把缩放写入操作历史 */
+function refreshViewport(): void {
+  if (board !== undefined) {
+    getElement("zoom-value").textContent = Math.round(board.viewport.zoom * 100) + "%";
+  }
+}
+
+/** 替换作品时保留历史，使新建和切换模板也能撤销 */
+function replaceDocument(document: BoardDocument): void {
+  board.setDocument(document);
+  board.fit();
+  commit();
+}
+
+/** 更新工具按钮与当前工具，让选中状态同时可见且可被读屏识别 */
+function chooseTool(tool: string): void {
+  if (!isTool(tool)) {
+    return;
+  }
+  board.setTool(tool);
+}
+
+/** 工具也可能由绘图完成后切换，按钮状态统一从画布同步 */
+function refreshToolButtons(tool: Tool): void {
+  for (const button of document.querySelectorAll("[data-tool]")) {
+    button.setAttribute("aria-pressed", String(button.getAttribute("data-tool") === tool));
+  }
+}
+
+/** 取得原生对话框，先验证元素类型再调用模态接口 */
+function getDialog(id: string): HTMLDialogElement {
+  const dialog = getElement(id);
+  if (!(dialog instanceof HTMLDialogElement)) {
+    throw new Error("对话框类型不正确：" + id);
+  }
+  return dialog;
+}
+
+/** 打开对象标签编辑，锁定对象不允许间接修改 */
+function editText(id: string): void {
+  const shape = findShape(board.document, id);
+  if (shape === undefined || shape.locked) {
+    return;
+  }
+  textTarget = id;
+  const input = getElement("text-value");
+  if (input instanceof HTMLTextAreaElement) {
+    input.value = shape.text;
+  }
+  getDialog("text-dialog").showModal();
+}
+
+/** 提交文字后保留原来的对象关系，按一次操作写入历史 */
+function handleTextSubmit(event: SubmitEvent): void {
+  event.preventDefault();
+  const shape = findShape(board.document, textTarget);
+  const input = getElement("text-value");
+  if (shape !== undefined && input instanceof HTMLTextAreaElement) {
+    shape.text = input.value;
+    board.render();
+    commit();
+  }
+  getDialog("text-dialog").close();
+}
+
+/** 读取导出选项，预览和实际下载始终使用同一组参数 */
+function getExportSvg(): string {
+  return createSvg(board.document, {
+    crop: getInput("export-crop").checked,
+    transparent: getInput("export-transparent").checked,
+    hideAuxiliary: getInput("export-auxiliary").checked
+  });
+}
+
+/** 使用独立图片展示导出预览，预览不插入可执行的 SVG 内容 */
+function refreshExportPreview(): void {
+  const preview = getElement("export-preview");
+  const previous = preview.querySelector("img");
+  if (previous !== null) {
+    URL.revokeObjectURL(previous.src);
+  }
+  const image = new Image();
+  image.alt = "导出预览";
+  image.src = URL.createObjectURL(new Blob([getExportSvg()], { type: "image/svg+xml" }));
+  preview.replaceChildren(image);
+}
+
+/** 从文件选择器读取作品，失败时保持当前画板不变 */
+async function handleFileChange(): Promise<void> {
+  const input = getInput("file-input");
+  if (input.files === null || input.files.length === 0) {
+    return;
+  }
+  try {
+    const document = await openProject(input.files[0]);
+    replaceDocument(document);
+  } catch (error) {
+    notify(errorMessage(error));
+  }
+  input.value = "";
+}
+
+/** 处理统一入口的工具和命令，异步失败统一报告 */
+async function handleClick(event: MouseEvent): Promise<void> {
+  if (!(event.target instanceof Element)) {
+    return;
+  }
+  const toolButton = event.target.closest("[data-tool]");
+  if (toolButton !== null) {
+    chooseTool(toolButton.getAttribute("data-tool") || "");
+    return;
+  }
+  const layer = event.target.closest("[data-layer]");
+  if (layer !== null) {
+    board.select(layer.getAttribute("data-layer") || "", event.shiftKey);
+    return;
+  }
+  const visibility = event.target.closest("[data-visibility]");
+  if (visibility !== null) {
+    const shape = findShape(board.document, visibility.getAttribute("data-visibility") || "");
+    if (shape !== undefined) {
+      shape.hidden = !shape.hidden;
+      board.render();
+      commit();
+    }
+    return;
+  }
+  const button = event.target.closest("[data-action]");
+  if (button === null || (button instanceof HTMLButtonElement && button.disabled)) {
+    return;
+  }
+  try {
+    await executeAction(button.getAttribute("data-action") || "");
+  } catch (error) {
+    notify(errorMessage(error));
+  }
+}
+
+/** 执行文件与视图命令，作品对象操作交给单独函数 */
+async function executeAction(action: string): Promise<void> {
+  if (action === "new") {
+    replaceDocument(createDocument());
+  } else if (action === "open") {
+    getInput("file-input").click();
+  } else if (action === "save") {
+    saveLocal();
+    saveProject(board.document);
+  } else if (action === "template-flow") {
+    replaceDocument(createFlowTemplate());
+  } else if (action === "template-geometry") {
+    replaceDocument(createGeometryTemplate());
+  } else if (action === "undo" || action === "redo") {
+    let snapshot: string | null = null;
+    if (action === "redo") {
+      snapshot = history.redo();
+    } else {
+      snapshot = history.undo();
+    }
+    if (snapshot !== null) {
+      board.setDocument(parseDocument(snapshot));
+      scheduleSave();
+      refreshPanels();
+    }
+  } else if (action === "zoom-in") {
+    board.zoomTo(board.viewport.zoom * 1.2);
+  } else if (action === "zoom-out") {
+    board.zoomTo(board.viewport.zoom / 1.2);
+  } else if (action === "reset-zoom") {
+    board.zoomTo(1);
+  } else if (action === "fit") {
+    board.fit();
+  } else if (action === "grid" || action === "snap") {
+    if (action === "grid") {
+      board.showGrid = !board.showGrid;
+      getElement("grid-button").setAttribute("aria-pressed", String(board.showGrid));
+    } else {
+      board.snap = !board.snap;
+      getElement("snap-button").setAttribute("aria-pressed", String(board.snap));
+    }
+    board.render();
+  } else if (action === "toggle-inspector") {
+    getElement("inspector").classList.toggle("mobile-open");
+  } else if (action === "tab-layers" || action === "tab-properties") {
+    const layers = action === "tab-layers";
+    getElement("properties-panel").hidden = layers;
+    getElement("layers-panel").hidden = !layers;
+    getElement("layers-tab").classList.toggle("active", layers);
+    getElement("properties-tab").classList.toggle("active", !layers);
+    getElement("layers-tab").setAttribute("aria-pressed", String(layers));
+    getElement("properties-tab").setAttribute("aria-pressed", String(!layers));
+  } else if (action === "close-text") {
+    getDialog("text-dialog").close();
+  } else if (action === "close-export") {
+    getDialog("export-dialog").close();
+  } else if (action === "export") {
+    getElement("export-error").textContent = "";
+    refreshExportPreview();
+    getDialog("export-dialog").showModal();
+  } else if (action === "export-svg") {
+    downloadBlob(
+      new Blob([getExportSvg()], { type: "image/svg+xml" }),
+      getFileName(board.document.name) + ".svg"
+    );
+  } else if (action === "export-png") {
+    const dialog = getDialog("export-dialog");
+    dialog.setAttribute("aria-busy", "true");
+    try {
+      await exportPng(getExportSvg(), board.document.name);
+    } catch (error) {
+      getElement("export-error").textContent = errorMessage(error);
+    } finally {
+      dialog.setAttribute("aria-busy", "false");
+    }
+  } else {
+    executeObjectAction(action);
+  }
+}
+
+/** 从构造按钮名称得到支持的关系类型，不把任意字符串当作类型 */
+function getRelationKind(action: string): RelationKind {
+  if (action === "construct-segment") {
+    return "segment";
+  }
+  if (action === "construct-midpoint") {
+    return "midpoint";
+  }
+  if (action === "construct-intersection") {
+    return "intersection";
+  }
+  if (action === "construct-parallel") {
+    return "parallel";
+  }
+  if (action === "construct-perpendicular") {
+    return "perpendicular";
+  }
+  throw new Error("不支持的构造命令");
+}
+
+/** 执行作用于选区的命令，复制保持原始依赖顺序以便粘贴后通过校验 */
+function executeObjectAction(action: string): void {
+  const selected = board.getSelectedShapes();
+  if (action === "copy") {
+    clipboard = [];
+    for (const shape of board.document.shapes) {
+      if (board.selectedIds.includes(shape.id)) {
+        clipboard.push(structuredClone(shape));
+      }
+    }
+    return;
+  }
+  if (action === "paste") {
+    board.selectedIds = pasteShapes(board.document, clipboard);
+  } else if (action === "delete") {
+    const count = deleteShapes(board.document, board.selectedIds);
+    if (count > board.selectedIds.length) {
+      notify("同时删除了依赖这些对象的构造，可撤销恢复");
+    }
+    board.selectedIds = [];
+  } else if (action === "edit-text") {
+    if (selected.length === 1) {
+      editText(selected[0].id);
+    }
+    return;
+  } else if (action.startsWith("construct-")) {
+    const shape = constructShape(board.document, selected, getRelationKind(action));
+    board.selectedIds = [shape.id];
+  } else if (
+    action === "align-left" ||
+    action === "align-top" ||
+    action === "distribute" ||
+    action === "same-width"
+  ) {
+    arrangeShapes(selected, action);
+  } else if (action === "group") {
+    const group = crypto.randomUUID();
+    for (const shape of selected) {
+      shape.group = group;
+    }
+  } else if (action === "ungroup") {
+    for (const shape of selected) {
+      shape.group = "";
+    }
+  } else if (action === "raise" || action === "lower") {
+    changeLayers(board.document, board.selectedIds, action === "raise");
+  } else {
+    return;
+  }
+  board.render();
+  commit();
+}
+
+/** 修改单个属性，先验证控件范围，再写入模型 */
+function updateProperty(control: HTMLInputElement | HTMLSelectElement): void {
+  try {
+    const changed = applyProperty(board.document, board.getSelectedShapes(), control);
+    if (!changed) {
+      return;
+    }
+    board.render();
+    commit();
+  } catch (error) {
+    notify(errorMessage(error));
+    refreshPanels();
+  }
+}
+
+/** 处理属性、作品名称和导出选项变化 */
+function handleChange(event: Event): void {
+  const control = event.target;
+  if (!(control instanceof HTMLInputElement) && !(control instanceof HTMLSelectElement)) {
+    return;
+  }
+  if (control.id === "document-name") {
+    board.document.name = control.value;
+    commit();
+  } else if (control.id === "tool-stroke") {
+    board.stroke = control.value;
+    board.render();
+  } else if (control.id.startsWith("export-")) {
+    refreshExportPreview();
+  } else if (control.dataset.property !== undefined) {
+    updateProperty(control);
+  }
+}
+
+/** 键盘操作不干扰输入框、原生文本编辑或打开的对话框 */
+async function handleKeyDown(event: KeyboardEvent): Promise<void> {
+  if (
+    event.target instanceof HTMLInputElement ||
+    event.target instanceof HTMLTextAreaElement ||
+    event.target instanceof HTMLSelectElement ||
+    document.querySelector("dialog[open]") !== null
+  ) {
+    return;
+  }
+  let action = "";
+  const key = event.key.toLowerCase();
+  if (event.ctrlKey || event.metaKey) {
+    if (key === "z") {
+      action = "undo";
+      if (event.shiftKey) {
+        action = "redo";
+      }
+    } else if (key === "y") {
+      action = "redo";
+    } else if (key === "c") {
+      action = "copy";
+    } else if (key === "v") {
+      action = "paste";
+    } else if (key === "s") {
+      action = "save";
+    } else if (key === "a") {
+      event.preventDefault();
+      board.selectedIds = [];
+      for (const shape of board.document.shapes) {
+        if (!shape.hidden) {
+          board.selectedIds.push(shape.id);
+        }
+      }
+      board.render();
+      refreshPanels();
+      return;
+    }
+  } else if (key === "delete" || key === "backspace") {
+    action = "delete";
+  } else if (key === "escape") {
+    board.cancelGesture();
+    board.selectedIds = [];
+    chooseTool("select");
+    refreshPanels();
+    hideMessage();
+    return;
+  } else if (key.startsWith("arrow")) {
+    event.preventDefault();
+    let distance = 1;
+    if (event.shiftKey) {
+      distance = 10;
+    }
+    for (const shape of board.getSelectedShapes()) {
+      if (shape.locked || isDependent(shape)) {
+        continue;
+      }
+      if (key === "arrowleft") {
+        moveShape(shape, -distance, 0);
+      } else if (key === "arrowright") {
+        moveShape(shape, distance, 0);
+      } else if (key === "arrowup") {
+        moveShape(shape, 0, -distance);
+      } else if (key === "arrowdown") {
+        moveShape(shape, 0, distance);
+      }
+    }
+    board.render();
+    commit();
+    return;
+  } else if (key === "v") {
+    chooseTool("select");
+  } else if (key === "h") {
+    chooseTool("hand");
+  } else if (key === "r") {
+    chooseTool("rect");
+  } else if (key === "o") {
+    chooseTool("ellipse");
+  } else if (key === "t") {
+    chooseTool("text");
+  }
+  if (action !== "") {
+    event.preventDefault();
+    try {
+      await executeAction(action);
+    } catch (error) {
+      notify(errorMessage(error));
+    }
+  }
+}
+
+/** 页面关闭前尝试保存最后一次修改，不创建额外的确认对话框 */
+function handlePageHide(): void {
+  if (saveTimer !== 0) {
+    saveLocal();
+  }
+}
+
+mountInterface();
+const initial = loadInitialDocument();
+board = new BoardCanvas(getElement("canvas-host"), initial, {
+  changed: commit,
+  selected: refreshPanels,
+  viewChanged: refreshViewport,
+  editText: editText,
+  notify: notify,
+  toolChanged: refreshToolButtons
+});
+history.push(initial);
+chooseTool("select");
+refreshPanels();
+document.addEventListener("click", handleClick);
+document.addEventListener("change", handleChange);
+document.addEventListener("keydown", handleKeyDown);
+getInput("file-input").addEventListener("change", handleFileChange);
+getElement("text-form").addEventListener("submit", handleTextSubmit);
+window.addEventListener("pagehide", handlePageHide);
