@@ -498,6 +498,21 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+.release-info,
+.object-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.release-info {
+  flex-shrink: 0;
+}
+.zoom-controls {
+  flex-shrink: 0;
 }
 .status-dot {
   width: 6px;
@@ -645,10 +660,13 @@ dialog textarea {
   .arrangement {
     display: none;
   }
+  .board-size {
+    display: none;
+  }
 }
 @media (max-width: 45rem) {
   #app {
-    grid-template-rows: 60px 46px minmax(0, 1fr) 44px;
+    grid-template-rows: 60px 46px minmax(0, 1fr) 52px;
   }
   .workspace {
     grid-template-columns: 52px minmax(0, 1fr);
@@ -705,7 +723,7 @@ dialog textarea {
   .commandbar .icon-button {
     width: 32px;
   }
-  .board-size {
+  .object-status {
     display: none;
   }
   .statusbar {
@@ -714,6 +732,11 @@ dialog textarea {
   }
   .status-left {
     gap: 6px;
+  }
+  .release-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
   }
   #selection-count {
     display: none;

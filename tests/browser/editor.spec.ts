@@ -2,8 +2,24 @@ import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { parseDocument } from "../../src/document";
 import type { Point } from "../../src/types";
+import { readFileSync } from "node:fs";
 
 const BROWSER_CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
+
+/** 从项目配置读取期望版本，避免测试和页面各自维护版本号 */
+function readVersion(): string {
+  const text = readFileSync(new URL("../../package.json", import.meta.url), "utf8");
+  const packageInfo: unknown = JSON.parse(text);
+  if (
+    typeof packageInfo === "object" &&
+    packageInfo !== null &&
+    "version" in packageInfo &&
+    typeof packageInfo.version === "string"
+  ) {
+    return packageInfo.version;
+  }
+  throw new Error("项目配置缺少版本号");
+}
 
 /** 读取本地保存的作品对象，等待自动保存完成 */
 async function readSavedDocument(page: Page): Promise<string> {
@@ -83,6 +99,10 @@ async function runResponsiveTest(page: Page): Promise<void> {
     await page.setViewportSize({ width: width, height: 800 });
     await page.goto("http://127.0.0.1:5173/");
     await expect(page.locator(".upper-canvas")).toBeVisible();
+    const clock = page.locator("#current-time");
+    await expect(clock).toBeVisible();
+    await expect(clock).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    await expect(page.locator("#app-version")).toHaveText("v" + readVersion());
     /** 只检查页面宽度，画布内部平移不应导致整页滚动 */
     function hasOverflow(): boolean {
       return document.documentElement.scrollWidth > window.innerWidth;
@@ -114,6 +134,10 @@ async function runResponsiveTest(page: Page): Promise<void> {
     }
     await page.waitForFunction(hasDrawing);
     await page.screenshot({ path: "test-results/editor-" + width + ".png" });
+  }
+  const displayed = await page.locator("#current-time").textContent();
+  if (displayed !== null) {
+    await expect(page.locator("#current-time")).not.toHaveText(displayed);
   }
 }
 /** 在同一个浏览器中验证不同宽度，结束后释放浏览器进程 */

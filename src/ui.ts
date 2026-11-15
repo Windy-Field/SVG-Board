@@ -34,6 +34,27 @@ import {
 import type { Tool } from "./types";
 import packageInfo from "../package.json";
 
+const CLOCK_INTERVAL = 1000;
+const CLOCK_TIME_ZONE = "Asia/Shanghai";
+const CLOCK_FORMAT = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: CLOCK_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23"
+});
+
+/** 更新左下角的北京时间，使用 time 元素同时保留机器可读的时间 */
+function updateClock(): void {
+  const element = getElement("current-time");
+  const now = new Date();
+  element.textContent = CLOCK_FORMAT.format(now);
+  element.setAttribute("datetime", now.toISOString());
+}
+
 /** 工具栏按钮的配置，图标名与 Lucide 的公开名称一致 */
 interface ToolDefinition {
   tool: Tool;
@@ -176,16 +197,18 @@ export function mountInterface(): void {
         <div id="properties-panel"></div><div id="layers-panel" hidden></div>
         <section class="construction-section"><h2>${icon("triangle")} 几何构造</h2><div class="construction-grid"><button type="button" data-action="construct-segment">两点线段</button><button type="button" data-action="construct-midpoint">中点</button><button type="button" data-action="construct-intersection">交点</button><button type="button" data-action="construct-parallel">平行线</button><button type="button" data-action="construct-perpendicular">垂线</button></div><p id="construction-status" class="relationship-status" role="status"></p></section>
         <section class="template-section"><h2>画板模板</h2><button type="button" class="template-row" data-action="template-flow">${icon("link-2")}<span>程序流程图</span><span class="template-arrow">↗</span></button><button type="button" class="template-row" data-action="template-geometry">${icon("triangle")}<span>三角形中线</span><span class="template-arrow">↗</span></button></section>
-        <div class="inspector-foot">SVG-Board <span>${packageInfo.version}</span></div>
+        <div class="inspector-foot">SVG-Board</div>
       </aside>
     </main>
-    <footer class="statusbar"><div class="status-left"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div><span id="board-size" class="board-size">1200 × 800</span><div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div></footer>
+    <footer class="statusbar"><div class="status-left"><div class="release-info"><time id="current-time" aria-label="当前北京时间" title="北京时间（Asia/Shanghai）"></time><span id="app-version" aria-label="应用版本">v${packageInfo.version}</span></div><div class="object-status"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div></div><span id="board-size" class="board-size">1200 × 800</span><div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div></footer>
     <div id="message" class="message" role="status" hidden></div>
     <input id="file-input" type="file" accept=".json,.svg" hidden />
     <dialog id="text-dialog"><form id="text-form"><div class="dialog-heading"><h2>编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="10000"></textarea><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>
     <dialog id="export-dialog"><div class="dialog-heading"><h2>导出作品</h2>${commandButton("close-export", "关闭导出", "x")}</div><div class="export-options"><label><input id="export-crop" type="checkbox" checked /> 按内容裁剪</label><label><input id="export-transparent" type="checkbox" /> 透明背景</label><label><input id="export-auxiliary" type="checkbox" checked /> 隐藏辅助对象</label></div><div id="export-preview" class="export-preview"></div><p id="export-error" role="status"></p><div class="dialog-actions"><button type="button" data-action="export-svg">导出 SVG</button><button type="button" class="primary-button" data-action="export-png">导出 PNG</button></div></dialog>
   `;
   refreshIcons();
+  updateClock();
+  window.setInterval(updateClock, CLOCK_INTERVAL);
 }
 
 /** 验证工具名，仅将已知工具交给画布 */
