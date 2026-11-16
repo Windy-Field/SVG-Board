@@ -4,6 +4,7 @@ import { getLinePoints, isConstructionLine, resizeConstructionLine } from "../ge
 import { updateFabricGeometry } from "./fabric-shapes";
 import { GRID_SIZE, MAX_BEND_RATIO } from "../core/model";
 import type { Shape, Point as BoardPoint } from "../core/types";
+import type { Bounds } from "../core/types";
 
 /** 使用 Fabric 控制点拖动线条端点，模型始终记录真正的起点和终点 */
 export class LineControls {
@@ -12,6 +13,7 @@ export class LineControls {
   private changed: () => void;
   private canEdit: () => boolean;
   private snapPoint: (position: BoardPoint, excluded: string) => BoardPoint;
+  private clip: () => Bounds;
 
   /** 保存当前对象及吸附开关，回调只更新关联对象，不创建历史记录 */
   constructor(
@@ -19,13 +21,15 @@ export class LineControls {
     snap: () => boolean,
     changed: () => void,
     canEdit: () => boolean,
-    snapPoint: (position: BoardPoint, excluded: string) => BoardPoint
+    snapPoint: (position: BoardPoint, excluded: string) => BoardPoint,
+    clip: () => Bounds
   ) {
     this.shape = shape;
     this.snap = snap;
     this.changed = changed;
     this.canEdit = canEdit;
     this.snapPoint = snapPoint;
+    this.clip = clip;
   }
 
   /** 为线段安装两个端点手柄，线条中间专用于移动 */
@@ -84,7 +88,7 @@ export class LineControls {
       Math.min(MAX_BEND_RATIO, (left - this.shape.x) / this.shape.width)
     );
     this.shape.relation = { kind: "none", sources: [] };
-    updateFabricGeometry(transform.target, this.shape);
+    updateFabricGeometry(transform.target, this.shape, this.clip());
     this.changed();
     return true;
   }
@@ -134,7 +138,7 @@ export class LineControls {
       if (!isConstructionLine(this.shape) || !resizeConstructionLine(this.shape, index, snapped)) {
         return false;
       }
-      updateFabricGeometry(object, this.shape);
+      updateFabricGeometry(object, this.shape, this.clip());
       this.changed();
       return true;
     }
@@ -146,7 +150,7 @@ export class LineControls {
     this.shape.height = points[1].y - points[0].y;
     this.shape.rotation = 0;
     this.shape.relation = { kind: "none", sources: [] };
-    updateFabricGeometry(object, this.shape);
+    updateFabricGeometry(object, this.shape, this.clip());
     this.changed();
     return true;
   }

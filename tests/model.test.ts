@@ -32,7 +32,7 @@ function testBackground(): void {
 }
 test("画布颜色保存并兼容旧作品", testBackground);
 
-/** 拖动顶点后验证中点自动重算，并保留两点线段的关联 */
+/** 拖动顶点后验证中点自动重算，并保留两点直线的关联 */
 function testMidpoint(): void {
   const document = createGeometryTemplate();
   const vertex = document.shapes[2];
@@ -196,7 +196,7 @@ function testConstructionLength(): void {
 }
 test("构造线伸缩保存与来源转动联动", testConstructionLength);
 
-/** 两点线段缩短后来源仍可移动，端点不会因拖动越界而翻转 */
+/** 两点直线调整方向点后仍可联动，方向点不会因拖动越界而翻转 */
 function testSegmentExtent(): void {
   const document = createDocument();
   const first = createShape("point", { x: 100, y: 100 });
@@ -219,4 +219,4 @@ function testSegmentExtent(): void {
   assert.equal(segment.height, 1);
   assert.equal(segment.relation.kind, "segment");
 }
-test("两点线段伸缩保留方向及来源", testSegmentExtent);
+test("两点直线调整保留方向及来源", testSegmentExtent);

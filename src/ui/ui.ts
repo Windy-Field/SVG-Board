@@ -49,6 +49,7 @@ import { MIN_POLYGON_SIDES, MAX_REGULAR_SIDES, DEFAULT_POLYGON_SIDES } from "../
 import { AlignLeft, AlignCenter, AlignRight, ChevronDown } from "lucide";
 import { setupArchivePicker } from "./archive-picker";
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, MAX_DESCRIPTION_LENGTH } from "../core/model";
+import { Axis3d, ChartSpline, ChartScatter, UnfoldVertical } from "lucide";
 
 // 日期时间刷新间隔，单位为毫秒
 const CLOCK_INTERVAL = 1000;
@@ -84,6 +85,8 @@ const TOOLS: ToolDefinition[] = [
   { tool: "ellipse", label: "椭圆", icon: "circle" },
   { tool: "arrow", label: "箭头", icon: "arrow-up-right" },
   { tool: "connector", label: "连接线", icon: "link-2" },
+  { tool: "function", label: "函数绘制", icon: "chart-spline" },
+  { tool: "fit", label: "点拟合", icon: "chart-scatter" },
   { tool: "pencil", label: "自由画笔", icon: "pencil" },
   { tool: "text", label: "文字", icon: "type" },
   { tool: "vertical-text", label: "纵向文本框", icon: "text-cursor-input" }
@@ -184,7 +187,11 @@ export function refreshIcons(): void {
       AlignLeft: AlignLeft,
       AlignCenter: AlignCenter,
       AlignRight: AlignRight,
-      ChevronDown: ChevronDown
+      ChevronDown: ChevronDown,
+      Axis3d: Axis3d,
+      ChartSpline: ChartSpline,
+      ChartScatter: ChartScatter,
+      UnfoldVertical: UnfoldVertical
     }
   });
 }
@@ -206,6 +213,10 @@ export function mountInterface(): void {
     let badge = "";
     if (definition.tool === "line") {
       group = ' data-tool-group="lines" aria-haspopup="true" aria-expanded="false"';
+      badge = '<span class="tool-more" aria-hidden="true"></span>';
+    }
+    if (definition.tool === "point") {
+      group = ' data-tool-group="points" aria-haspopup="true" aria-expanded="false"';
       badge = '<span class="tool-more" aria-hidden="true"></span>';
     }
     if (definition.tool === "text") {
@@ -240,11 +251,12 @@ export function mountInterface(): void {
       "</button>";
   }
   const constructions = [
-    { action: "segment", label: "两点线段", icon: "git-commit-horizontal" },
+    { action: "segment", label: "两点直线", icon: "git-commit-horizontal" },
     { action: "intersection", label: "交点", icon: "crosshair" },
     { action: "midpoint", label: "中点", icon: "git-commit-horizontal" },
     { action: "parallel", label: "平行线", icon: "equal" },
-    { action: "perpendicular", label: "垂线", icon: "plus" }
+    { action: "perpendicular", label: "垂线", icon: "plus" },
+    { action: "bisector", label: "角平分线", icon: "unfold-vertical" }
   ];
   let constructionButtons = "";
   for (const construction of constructions) {

@@ -57,7 +57,7 @@ export function createSvg(document: BoardDocument, options: ExportOptions): stri
   }
   visible.sort(compareLayers);
   for (const shape of visible) {
-    canvas.add(createFabricShape(shape));
+    canvas.add(createFabricShape(shape, bounds));
     const label = createFabricLabel(shape);
     if (label !== null) {
       canvas.add(label);

@@ -5,7 +5,10 @@ import {
   MIN_BOARD_SIZE,
   MAX_BOARD_SIZE
 } from "../core/model";
-import type { BoardDocument, Relation, Shape, ShapeKind } from "../core/types";
+import type { BoardDocument, FunctionDefinition, Relation, Shape, ShapeKind } from "../core/types";
+import { MAX_COORDINATE_POINTS, MAX_MATH_COORDINATE } from "../math/coordinates";
+import { MAX_FIT_DEGREE, updateFunctionPath } from "../math/plots";
+import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
 import { isFont } from "../ui/fonts";
 import { createDocument, DEFAULT_BACKGROUND } from "../core/model";
 import { convertPointLabels } from "../objects/point-labels";
@@ -76,7 +79,8 @@ function readKind(value: unknown): ShapeKind {
     value === "line" ||
     value === "arrow" ||
     value === "polygon" ||
-    value === "curve"
+    value === "curve" ||
+    value === "function"
   ) {
     return value;
   }
@@ -109,11 +113,16 @@ function readShape(value: unknown): Shape {
     relationKind !== "intersection" &&
     relationKind !== "parallel" &&
     relationKind !== "perpendicular" &&
-    relationKind !== "label"
+    relationKind !== "label" &&
+    relationKind !== "fit" &&
+    relationKind !== "bisector"
   ) {
     throw new Error("文件包含不支持的构造关系");
   }
-  if (!Array.isArray(value.relation.sources) || value.relation.sources.length > 2) {
+  if (
+    !Array.isArray(value.relation.sources) ||
+    value.relation.sources.length > MAX_COORDINATE_POINTS
+  ) {
     throw new Error("构造来源数量不正确");
   }
   const sources: string[] = [];
@@ -155,7 +164,8 @@ function readShape(value: unknown): Shape {
   if (
     relationKind === "segment" ||
     relationKind === "parallel" ||
-    relationKind === "perpendicular"
+    relationKind === "perpendicular" ||
+    relationKind === "bisector"
   ) {
     if (value.relation.startOffset !== undefined) {
       relation.startOffset = readNumber(
@@ -168,9 +178,11 @@ function readShape(value: unknown): Shape {
       relation.endOffset = readNumber(value.relation.endOffset, -MAX_COORDINATE, MAX_COORDINATE);
     }
   }
-  return {
+  const shape: Shape = {
     id: readString(value.id, 80),
     kind: readKind(value.kind),
+    lineType: readLineType(value.lineType),
+    coordinatePoint: optionalBoolean(value.coordinatePoint),
     name: readString(value.name, MAX_NAME_LENGTH),
     x: readNumber(value.x, -MAX_COORDINATE, MAX_COORDINATE),
     y: readNumber(value.y, -MAX_COORDINATE, MAX_COORDINATE),
@@ -207,6 +219,51 @@ function readShape(value: unknown): Shape {
     layer: readNumber(value.layer, -100000, 100000),
     path: path,
     relation: relation
+  };
+  if (shape.kind === "function") {
+    shape.formula = readFormula(value.formula);
+    updateFunctionPath(shape);
+  }
+  return shape;
+}
+
+/** 旧作品未保存线类型时继续按线段读取 */
+function readLineType(value: unknown): "segment" | "ray" | "straight" {
+  if (value === undefined || value === "segment") {
+    return "segment";
+  }
+  if (value === "ray" || value === "straight") {
+    return value;
+  }
+  throw new Error("线类型无效");
+}
+
+/** 校验函数定义和有限多项式系数，不信任文件提供的路径 */
+function readFormula(value: unknown): FunctionDefinition {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.coefficients) ||
+    value.coefficients.length > MAX_FIT_DEGREE + 1
+  ) {
+    throw new Error("函数定义无效");
+  }
+  const coefficients: number[] = [];
+  for (const coefficient of value.coefficients) {
+    if (typeof coefficient !== "number" || !Number.isFinite(coefficient)) {
+      throw new Error("拟合系数无效");
+    }
+    coefficients.push(coefficient);
+  }
+  const degree = readNumber(value.degree, 0, MAX_FIT_DEGREE);
+  if (!Number.isInteger(degree)) {
+    throw new Error("拟合阶数必须是整数");
+  }
+  return {
+    expression: readString(value.expression, MAX_EXPRESSION_LENGTH),
+    minimum: readNumber(value.minimum, -MAX_MATH_COORDINATE, MAX_MATH_COORDINATE),
+    maximum: readNumber(value.maximum, -MAX_MATH_COORDINATE, MAX_MATH_COORDINATE),
+    degree: degree,
+    coefficients: coefficients
   };
 }
 
@@ -257,12 +314,32 @@ function validateRelations(shapes: Shape[]): void {
     if (relation.kind === "midpoint" || relation.kind === "label") {
       required = 1;
     }
+    if (relation.kind === "fit") {
+      required = relation.sources.length;
+      if (
+        shape.kind !== "function" ||
+        shape.formula === undefined ||
+        required <= shape.formula.degree
+      ) {
+        throw new Error("拟合函数的来源点数不足");
+      }
+      const unique = new Set(relation.sources);
+      if (unique.size !== required) {
+        throw new Error("拟合来源点不能重复");
+      }
+    }
     if (relation.sources.length !== required) {
       throw new Error("构造来源数量与构造类型不匹配");
     }
     for (const id of relation.sources) {
       if (!seen.has(id)) {
         throw new Error("构造来源缺失、顺序错误或存在循环关系");
+      }
+      if (relation.kind === "fit") {
+        const source = seen.get(id);
+        if (source === undefined || source.kind !== "point") {
+          throw new Error("拟合来源必须是点");
+        }
       }
     }
     if (relation.kind !== "none") {
@@ -275,13 +352,22 @@ function validateRelations(shapes: Shape[]): void {
         throw new Error("顶点文字需要关联一个点");
       }
       if (
+        relation.kind === "bisector" &&
+        (first.kind !== "line" ||
+          second === undefined ||
+          second.kind !== "line" ||
+          shape.kind !== "line")
+      ) {
+        throw new Error("角平分线需要两条相交直线");
+      }
+      if (
         relation.kind === "segment" &&
         (first.kind !== "point" ||
           second === undefined ||
           second.kind !== "point" ||
           shape.kind !== "line")
       ) {
-        throw new Error("两点线段的来源必须是点");
+        throw new Error("两点构造的来源必须是点");
       }
       if (relation.kind === "midpoint" && (first.kind !== "line" || shape.kind !== "point")) {
         throw new Error("中点必须依附在线段上");

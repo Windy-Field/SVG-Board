@@ -117,11 +117,13 @@ async function checkToolbar(page: Page): Promise<void> {
     "判断框",
     "正多边形",
     "椭圆",
+    "函数绘制",
+    "点拟合",
     "自由画笔",
     "文字"
   ]);
   const constructions = await page.locator(".geometry-tools button").evaluateAll(readToolNames);
-  expect(constructions).toEqual(["两点线段", "交点", "中点", "平行线", "垂线"]);
+  expect(constructions).toEqual(["两点直线", "交点", "中点", "平行线", "垂线", "角平分线"]);
   await expect(page.locator(".tool-divider").first()).toBeVisible();
   /** 检查工具栏实际高度，不能靠隐藏溢出内容消除滚动条 */
   function toolbarFits(): boolean {
@@ -591,7 +593,7 @@ async function checkLegacyDuplicates(page: Page): Promise<void> {
   await expect(page.locator('[data-archive-value="edited"]')).toHaveCount(1);
 }
 
-/** 验证线段与圆的两次点击放置，几何点和两点线段保留依赖 */
+/** 验证线段与圆的两次点击放置，几何点和两点直线保留依赖 */
 async function checkClickPlacement(page: Page): Promise<void> {
   await openBoard(page, createDocument());
   await page.getByRole("button", { name: "线段", exact: true }).click();
@@ -619,7 +621,7 @@ async function checkClickPlacement(page: Page): Promise<void> {
   const point = document.shapes[2];
   expect(point.kind).toBe("point");
   expect(point.pointRadius).toBe(5);
-  await page.getByRole("button", { name: "两点线段", exact: true }).click();
+  await page.getByRole("button", { name: "两点直线", exact: true }).click();
   await page.mouse.click(pointPosition.x, pointPosition.y);
   const end = await screen(page, { x: 500, y: 500 });
   await page.mouse.click(end.x, end.y);
@@ -1237,7 +1239,7 @@ test("拖动决定尺寸且矩形圆角保存", testDrawingSizes);
 test("空白工作台截图", testWorkspaceScreenshot);
 test("默认吸附与线条端点交点优先", testEndpointIntersections);
 test("旧存档合并重复并保留编辑副本", testLegacyDuplicates);
-test("点击放置线圆与两点线段", testClickPlacement);
+test("点击放置线圆与两点直线", testClickPlacement);
 test("标题栏存档与保存透明导出", testHeaderAndExport);
 test("右键框选笔画与已有多选", testMarqueeEdges);
 test("对象管理隐藏仅作用目标并显示锁定", testObjectManagement);

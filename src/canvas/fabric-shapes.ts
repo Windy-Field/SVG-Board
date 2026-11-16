@@ -1,7 +1,8 @@
 import { Circle, Ellipse, Line, Path, Polygon, Rect, Textbox } from "fabric";
 import type { FabricObject } from "fabric";
 import { getBounds } from "../core/model";
-import type { Shape } from "../core/types";
+import type { Bounds, Shape } from "../core/types";
+import { extendedLinePoints } from "../geometry/extended-lines";
 import { curvePath, regularPoints } from "../objects/shapes";
 
 // 控制点大小，单位为屏幕像素
@@ -24,7 +25,7 @@ const LABEL_HORIZONTAL_PADDING = 16;
 const LINE_LABEL_OFFSET = 16;
 
 /** 根据作品创建库中的几何对象，控制点与变换交给 Fabric */
-export function createFabricShape(shape: Shape): FabricObject {
+export function createFabricShape(shape: Shape, clip?: Bounds): FabricObject {
   const bounds = getBounds(shape);
   const width = Math.max(1, bounds.width);
   const height = Math.max(1, bounds.height);
@@ -42,7 +43,8 @@ export function createFabricShape(shape: Shape): FabricObject {
   } else if (shape.kind === "point") {
     object = new Circle({ radius: shape.pointRadius });
   } else if (shape.kind === "line") {
-    object = new Line([0, 0, shape.width, shape.height]);
+    const points = extendedLinePoints(shape, clip);
+    object = new Line([points[0].x, points[0].y, points[1].x, points[1].y]);
   } else if (shape.kind === "arrow" || shape.kind === "connector") {
     object = createArrow(shape);
   } else if (shape.kind === "pencil") {
@@ -59,13 +61,13 @@ export function createFabricShape(shape: Shape): FabricObject {
     if (object.width > 0 && object.height > 0) {
       object.set({ scaleX: width / object.width, scaleY: height / object.height });
     }
-  } else if (shape.kind === "curve") {
+  } else if (shape.kind === "curve" || shape.kind === "function") {
     let path = shape.path;
     if (path === "") {
       path = curvePath(shape);
     }
     object = new Path(path, { fill: "" });
-    if (shape.path !== "" && object.width > 0 && object.height > 0) {
+    if (shape.kind !== "function" && shape.path !== "" && object.width > 0 && object.height > 0) {
       object.set({ scaleX: width / object.width, scaleY: height / object.height });
     }
   } else if (shape.kind === "text") {
@@ -96,7 +98,8 @@ export function createFabricShape(shape: Shape): FabricObject {
     shape.kind === "arrow" ||
     shape.kind === "connector" ||
     shape.kind === "pencil" ||
-    shape.kind === "curve"
+    shape.kind === "curve" ||
+    shape.kind === "function"
   ) {
     fill = "";
   }
@@ -148,6 +151,17 @@ export function createFabricShape(shape: Shape): FabricObject {
   if (shape.kind === "text") {
     object.top = bounds.y + object.getScaledHeight() / 2;
   }
+  if (shape.kind === "line" && shape.lineType !== "segment") {
+    const points = extendedLinePoints(shape, clip);
+    object.set({
+      left: (points[0].x + points[1].x) / 2,
+      top: (points[0].y + points[1].y) / 2,
+      angle: 0
+    });
+  }
+  if (object instanceof Path && shape.kind === "function") {
+    object.set({ left: object.pathOffset.x, top: object.pathOffset.y });
+  }
   // 细线只响应实际笔画，避免点在线条外接矩形的空白处也被选中
   object.perPixelTargetFind = isStrokeShape(shape);
   // 字体初始化可能缓存旧边界，位置设置完成后再计算命中与导出范围
@@ -166,13 +180,14 @@ function isStrokeShape(shape: Shape): boolean {
     shape.kind === "connector" ||
     shape.kind === "pencil" ||
     shape.kind === "curve" ||
+    shape.kind === "function" ||
     shape.fill === "none"
   );
 }
 
 /** 在原对象上更新关联几何，不从画布移除对象，以保留选区与图层顺序 */
-export function updateFabricGeometry(object: FabricObject, shape: Shape): void {
-  const replacement = createFabricShape(shape);
+export function updateFabricGeometry(object: FabricObject, shape: Shape, clip?: Bounds): void {
+  const replacement = createFabricShape(shape, clip);
   if (object instanceof Path && replacement instanceof Path) {
     object.set({ path: replacement.path, pathOffset: replacement.pathOffset });
   }

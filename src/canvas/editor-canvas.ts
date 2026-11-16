@@ -13,6 +13,13 @@ interface TargetInfo {
 
 /** 保留用户当前选中的重叠对象，文字首次命中时优先于线条 */
 export class EditorCanvas extends Canvas {
+  /** 只有存在对象变换时才通知库结束，空白区平移没有变换目标 */
+  override endCurrentTransform(event?: TPointerEvent): void {
+    if (this._currentTransform !== null) {
+      super.endCurrentTransform(event);
+    }
+  }
+
   /** 使用库的像素命中结果，调整目标优先级后继续由库处理拖动 */
   override findTarget(event: TPointerEvent): TargetInfo {
     const result = super.findTarget(event);

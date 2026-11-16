@@ -4,6 +4,7 @@ import "../styles/motion.css";
 import "../styles/selects.css";
 import "../styles/text-toolbar.css";
 import "../styles/archive-picker.css";
+import "../styles/math-tools.css";
 import { BoardCanvas } from "../canvas/canvas";
 import {
   arrangeShapes,
@@ -38,6 +39,10 @@ import { detachLabel } from "../objects/shape-labels";
 import { syncLiveEntry } from "./live-entry";
 import { renderArchivePicker } from "../ui/archive-picker";
 import { isConstructionTool, validConstructionSources } from "../geometry/construction-tools";
+import { openMathDialog, setupMathDialogs } from "../ui/math-dialogs";
+import { axisStep } from "../canvas/axes";
+import { COORDINATE_UNIT } from "../math/coordinates";
+import { refreshIcons } from "../ui/ui";
 
 // 提示停留时间，单位为毫秒
 const MESSAGE_DURATION = 6000;
@@ -127,6 +132,7 @@ function saveLocal(): void {
 /** 更新状态栏、属性和对象管理列表 */
 function refreshPanels(): void {
   const selected = board.getSelectedShapes();
+  getElement("axes-button").setAttribute("aria-pressed", String(board.showAxes));
   getInput("document-name").value = board.document.name;
   getElement("object-count").textContent = board.document.shapes.length + " 个对象";
   getElement("object-manager-count").textContent = String(board.document.shapes.length);
@@ -184,6 +190,11 @@ function refreshViewport(): void {
     host.dataset.viewX = String(board.viewport.x);
     host.dataset.viewY = String(board.viewport.y);
     host.dataset.zoom = String(board.viewport.zoom);
+    const scale = getElement("canvas-scale");
+    const step = axisStep(board.viewport.zoom, host.clientWidth);
+    scale.textContent = step + " 单位";
+    scale.style.width = step * COORDINATE_UNIT * board.viewport.zoom + "px";
+    scale.dataset.step = String(step);
     refreshTextToolbar();
   }
 }
@@ -204,6 +215,12 @@ function chooseTool(tool: string): void {
     getDialog("polygon-dialog").showModal();
     return;
   }
+  if (tool === "function" || tool === "fit" || tool === "coordinate-point") {
+    if (!board.readOnly) {
+      openMathDialog(tool);
+    }
+    return;
+  }
   board.setTool(tool);
 }
 
@@ -215,7 +232,12 @@ function refreshToolButtons(tool: Tool): void {
   const lines = document.querySelector('[data-tool-group="lines"]');
   if (
     lines !== null &&
-    (tool === "line" || tool === "arrow" || tool === "connector" || tool === "curve")
+    (tool === "line" ||
+      tool === "ray" ||
+      tool === "straight" ||
+      tool === "arrow" ||
+      tool === "connector" ||
+      tool === "curve")
   ) {
     lines.setAttribute("aria-pressed", "true");
   }
@@ -492,6 +514,10 @@ async function executeAction(action: string): Promise<void> {
     board.zoomTo(1);
   } else if (action === "fit") {
     board.fit();
+  } else if (action === "axes") {
+    board.showAxes = !board.showAxes;
+    getElement("axes-button").setAttribute("aria-pressed", String(board.showAxes));
+    board.render();
   } else if (action === "grid" || action === "snap") {
     if (action === "grid") {
       board.showGrid = !board.showGrid;
@@ -570,6 +596,9 @@ function getRelationKind(action: string): RelationKind {
   if (action === "construct-perpendicular") {
     return "perpendicular";
   }
+  if (action === "construct-bisector") {
+    return "bisector";
+  }
   throw new Error("不支持的构造命令");
 }
 
@@ -585,7 +614,12 @@ function executeObjectAction(action: string): void {
     }
     return;
   }
-  if (action === "paste") {
+  if (action === "hide") {
+    for (const shape of selected) {
+      shape.hidden = true;
+    }
+    board.selectedIds = [];
+  } else if (action === "paste") {
     board.selectedIds = pasteShapes(board.document, clipboard);
   } else if (action === "delete") {
     const count = deleteShapes(board.document, board.selectedIds);
@@ -716,6 +750,8 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
       action = "paste";
     } else if (key === "s") {
       action = "save";
+    } else if (key === "h") {
+      action = "hide";
     } else if (key === "a") {
       event.preventDefault();
       board.selectedIds = [];
@@ -795,6 +831,7 @@ function handlePageHide(): void {
 }
 
 mountInterface();
+mountMathView();
 if (window.matchMedia("(max-width: 45rem)").matches) {
   const workspace = document.querySelector(".workspace");
   if (workspace !== null) {
@@ -817,6 +854,8 @@ board = new BoardCanvas(getElement("canvas-host"), initial, {
   notify: notify,
   toolChanged: refreshToolButtons
 });
+setupMathDialogs(board, commit);
+refreshIcons();
 history.push(initial);
 chooseTool("select");
 refreshPanels();
@@ -845,6 +884,7 @@ function isViewAction(action: string): boolean {
     "reset-zoom",
     "fit",
     "grid",
+    "axes",
     "snap",
     "toggle-inspector",
     "tab-objects",
@@ -958,4 +998,23 @@ function handlePolygonSubmit(event: SubmitEvent): void {
   board.polygonSides = Number(input.value);
   board.setTool("polygon");
   getDialog("polygon-dialog").close();
+}
+
+/** 坐标轴按钮紧跟网格，比例尺固定放在画布右上角 */
+function mountMathView(): void {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "axes-button";
+  button.className = "icon-button";
+  button.dataset.action = "axes";
+  button.title = "显示坐标轴";
+  button.setAttribute("aria-label", "显示坐标轴");
+  button.setAttribute("aria-pressed", "true");
+  button.innerHTML = '<i data-lucide="axis-3d" aria-hidden="true"></i>';
+  getElement("grid-button").after(button);
+  const scale = document.createElement("div");
+  scale.id = "canvas-scale";
+  scale.className = "canvas-scale";
+  scale.setAttribute("aria-label", "坐标轴比例尺");
+  getElement("canvas-host").append(scale);
 }

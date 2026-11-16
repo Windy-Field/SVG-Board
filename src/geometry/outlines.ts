@@ -1,9 +1,9 @@
 import { Path, Point as FabricPoint, util } from "fabric";
 import { getBounds, isLine } from "../core/model";
-import { getLinePoints } from "./geometry";
 import { createFabricShape } from "../canvas/fabric-shapes";
 import { regularPoints } from "../objects/shapes";
 import type { Point, Shape } from "../core/types";
+import { extendedLinePoints } from "./extended-lines";
 
 // 椭圆边框采样点数，影响吸附精度
 const ELLIPSE_STEPS = 96;
@@ -100,12 +100,25 @@ function pathPoints(shape: Shape): Point[] {
 
 /** 返回按笔画顺序排列的边界点，封闭图形的末点与首点相同 */
 export function outlinePoints(shape: Shape): Point[] {
+  if (shape.kind === "function") {
+    const commands = util.parsePath(shape.path);
+    const points: Point[] = [];
+    for (const command of commands) {
+      if (command[0] === "M") {
+        points.push({ x: NaN, y: NaN });
+      }
+      if (command[0] === "M" || command[0] === "L") {
+        points.push({ x: command[1], y: command[2] });
+      }
+    }
+    return points;
+  }
   if (shape.kind === "curve" || shape.kind === "pencil") {
     return pathPoints(shape);
   }
   if (isLine(shape)) {
     if (shape.kind !== "connector") {
-      return getLinePoints(shape);
+      return extendedLinePoints(shape);
     }
     const bend = shape.width * shape.bend;
     const local = [

@@ -1,6 +1,12 @@
 import { createFabricLabel, createFabricShape } from "../canvas/fabric-shapes";
 import type { BoardDocument, Bounds, Shape } from "../core/types";
-import { BOARD_WIDTH, BOARD_HEIGHT, MIN_BOARD_SIZE, MAX_BOARD_SIZE } from "../core/model";
+import {
+  BOARD_WIDTH,
+  BOARD_HEIGHT,
+  MIN_BOARD_SIZE,
+  MAX_BOARD_SIZE,
+  getRotatedBounds
+} from "../core/model";
 
 // 保存内容外框时预留的空白，单位为画布坐标
 export const CONTENT_PADDING = 40;
@@ -15,7 +21,9 @@ export function visualBounds(shapes: Shape[]): Bounds | null {
     if (shape.hidden) {
       continue;
     }
-    const object = createFabricShape(shape);
+    // 无限线使用两个方向点决定导出范围，避免把整个数学平面计入尺寸
+    const clip = getRotatedBounds(shape);
+    const object = createFabricShape(shape, clip);
     const label = createFabricLabel(shape);
     const objects = [object];
     if (label !== null) {

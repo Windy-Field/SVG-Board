@@ -7,7 +7,8 @@ export function isConstructionTool(value: string): value is ConstructionTool {
     value === "midpoint" ||
     value === "intersection" ||
     value === "parallel" ||
-    value === "perpendicular"
+    value === "perpendicular" ||
+    value === "bisector"
   );
 }
 
@@ -33,7 +34,7 @@ export function acceptsConstructionSource(
   if (kind === "segment") {
     return candidate.kind === "point";
   }
-  if (kind === "midpoint" || kind === "intersection") {
+  if (kind === "midpoint" || kind === "intersection" || kind === "bisector") {
     return candidate.kind === "line";
   }
   if (candidate.kind !== "point" && candidate.kind !== "line") {

@@ -180,14 +180,16 @@ async function runPanSelection(page: Page): Promise<void> {
   expect(moved.shapes[0].x).toBeCloseTo(330, 4);
 }
 
-/** 检查框选后组合的首次拖动，以及取消选择后的再次整体拖动 */
+/** 检查 Shift 左键框选后的组合拖动，普通空白拖动保留给平移 */
 async function runGroupSelection(page: Page): Promise<void> {
   const document = createDocument();
   document.shapes.push(rectangle("甲", 150, 200), rectangle("乙", 450, 200));
   await openDocument(page, document);
   const topLeft = await screenPoint(page, { x: 110, y: 160 });
   const bottomRight = await screenPoint(page, { x: 640, y: 330 });
+  await page.keyboard.down("Shift");
   await drag(page, topLeft, bottomRight);
+  await page.keyboard.up("Shift");
   await expect(page.locator("#selection-count")).toHaveText("已选择 2");
   await page.getByRole("button", { name: "组合", exact: true }).click();
   await page.keyboard.press("Escape");

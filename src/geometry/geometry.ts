@@ -1,6 +1,7 @@
 import Flatten from "@flatten-js/core";
 import { findShape, getBounds, MAX_COORDINATE } from "../core/model";
 import type { BoardDocument, Point, Shape } from "../core/types";
+import { updateFittedFunction } from "../math/plots";
 
 // 小于此长度时按退化几何处理，单位为画布坐标
 const MIN_LENGTH = 0.000001;
@@ -14,7 +15,9 @@ export const MAX_CONSTRUCTION_LENGTH = MAX_COORDINATE;
 /** 判断线条是否保留几何构造关系，端点伸缩时仍需沿来源方向 */
 export function isConstructionLine(shape: Shape): boolean {
   const kind = shape.relation.kind;
-  return kind === "segment" || kind === "parallel" || kind === "perpendicular";
+  return (
+    kind === "segment" || kind === "parallel" || kind === "perpendicular" || kind === "bisector"
+  );
 }
 
 /** 将拖动位置投影到构造线，调整一个端点的显示长度并保留来源 */
@@ -167,6 +170,22 @@ function setConstructionLine(shape: Shape, start: Point, end: Point): void {
 /** 更新一个构造对象，来源缺失或退化时返回 false，不保留错误的可见结果 */
 function updateRelation(document: BoardDocument, shape: Shape): boolean {
   const relation = shape.relation;
+  if (relation.kind === "fit") {
+    const sources: Shape[] = [];
+    for (const id of relation.sources) {
+      const source = findShape(document, id);
+      if (source === undefined) {
+        return false;
+      }
+      sources.push(source);
+    }
+    try {
+      updateFittedFunction(shape, sources);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   const first = findShape(document, relation.sources[0]);
   const second = findShape(document, relation.sources[1]);
   if (first === undefined) {
@@ -211,7 +230,7 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
   if (length < MIN_LENGTH) {
     return false;
   }
-  if (relation.kind === "intersection") {
+  if (relation.kind === "intersection" || relation.kind === "bisector") {
     const other = getLinePoints(second);
     if (Math.hypot(other[1].x - other[0].x, other[1].y - other[0].y) < MIN_LENGTH) {
       return false;
@@ -228,8 +247,26 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
     if (intersections.length !== 1) {
       return false;
     }
-    shape.x = intersections[0].x;
-    shape.y = intersections[0].y;
+    if (relation.kind === "intersection") {
+      shape.x = intersections[0].x;
+      shape.y = intersections[0].y;
+      return true;
+    }
+    // 两条单位方向向量相加得到一条角平分线，反向时改取另一方向
+    const otherLength = Math.hypot(other[1].x - other[0].x, other[1].y - other[0].y);
+    let bisectorX = directionX / length + (other[1].x - other[0].x) / otherLength;
+    let bisectorY = directionY / length + (other[1].y - other[0].y) / otherLength;
+    let bisectorLength = Math.hypot(bisectorX, bisectorY);
+    if (bisectorLength < MIN_LENGTH) {
+      bisectorX = directionX / length - (other[1].x - other[0].x) / otherLength;
+      bisectorY = directionY / length - (other[1].y - other[0].y) / otherLength;
+      bisectorLength = Math.hypot(bisectorX, bisectorY);
+    }
+    const origin = intersections[0];
+    setConstructionLine(shape, origin, {
+      x: origin.x + (bisectorX / bisectorLength) * CONSTRUCTION_LENGTH,
+      y: origin.y + (bisectorY / bisectorLength) * CONSTRUCTION_LENGTH
+    });
     return true;
   }
   if (relation.kind === "perpendicular") {

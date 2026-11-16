@@ -22,6 +22,9 @@ import {
   MIN_CONSTRUCTION_LENGTH,
   MAX_CONSTRUCTION_LENGTH
 } from "../geometry/geometry";
+import { toMathPoint, toCanvasPoint, MAX_MATH_COORDINATE } from "../math/coordinates";
+import { updateFunctionPath } from "../math/plots";
+import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
 
 /** 校验属性控件并更新作品，返回是否需要提交修改 */
 export function applyProperty(
@@ -65,6 +68,12 @@ export function applyProperty(
     target = [shape];
   }
   if (target.length !== 1) {
+    if (property === "opacity" && Number.isFinite(value) && value >= 0 && value <= 1) {
+      for (const shape of target) {
+        shape.opacity = value;
+      }
+      return target.length > 0;
+    }
     return false;
   }
   const shape = target[0];
@@ -74,7 +83,18 @@ export function applyProperty(
   if (control instanceof HTMLInputElement && control.type === "number") {
     return applyNumber(shape, property, value);
   }
-  if (property === "name") {
+  if (property === "expression" && shape.formula !== undefined) {
+    const copy = structuredClone(shape);
+    if (copy.formula === undefined) {
+      return false;
+    }
+    copy.formula.expression = control.value;
+    copy.formula.coefficients = [];
+    copy.formula.degree = 0;
+    updateFunctionPath(copy);
+    copy.relation = { kind: "none", sources: [] };
+    Object.assign(shape, copy);
+  } else if (property === "name") {
     shape.name = control.value;
   } else if (property === "stroke") {
     shape.stroke = control.value;
@@ -98,7 +118,42 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
   if (property === "displayLength") {
     return setConstructionLength(shape, value);
   }
-  const fixed = shape.locked;
+  if (
+    (property === "domainMinimum" || property === "domainMaximum") &&
+    shape.formula !== undefined
+  ) {
+    if (Math.abs(value) > MAX_MATH_COORDINATE) {
+      return false;
+    }
+    const copy = structuredClone(shape);
+    if (copy.formula === undefined) {
+      return false;
+    }
+    if (property === "domainMinimum") {
+      copy.formula.minimum = value;
+    } else {
+      copy.formula.maximum = value;
+    }
+    updateFunctionPath(copy);
+    Object.assign(shape, copy);
+    return true;
+  }
+  if ((property === "coordinateX" || property === "coordinateY") && !shape.locked) {
+    if (Math.abs(value) > MAX_MATH_COORDINATE) {
+      return false;
+    }
+    const position = toMathPoint(shape);
+    if (property === "coordinateX") {
+      position.x = value;
+    } else {
+      position.y = value;
+    }
+    const canvas = toCanvasPoint(position);
+    moveShape(shape, canvas.x - shape.x, canvas.y - shape.y);
+    shape.relation = { kind: "none", sources: [] };
+    return true;
+  }
+  const fixed = shape.locked || shape.kind === "function";
   if (
     !fixed &&
     isDependent(shape) &&
@@ -255,11 +310,13 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     panel.innerHTML =
       '<section class="property-section"><h2>已选择 ' +
       selected.length +
-      ' 个对象</h2><div class="multi-actions"><button type="button" data-action="group">组合</button><button type="button" data-action="ungroup">取消组合</button><button type="button" data-action="align-left">左对齐</button><button type="button" data-action="align-top">顶对齐</button><button type="button" data-action="distribute">水平等距</button><button type="button" data-action="same-width">统一宽度</button></div></section>';
+      " 个对象</h2>" +
+      numberField("透明度", "opacity", selected[0].opacity, 0, 1, false) +
+      '<div class="multi-actions"><button type="button" data-action="group">组合</button><button type="button" data-action="ungroup">取消组合</button><button type="button" data-action="align-left">左对齐</button><button type="button" data-action="align-top">顶对齐</button><button type="button" data-action="distribute">水平等距</button><button type="button" data-action="same-width">统一宽度</button></div></section>';
     return;
   }
   const shape = selected[0];
-  const fixed = shape.locked;
+  const fixed = shape.locked || shape.kind === "function";
   const point = shape.kind === "point";
   let markup =
     '<section class="property-section"><div class="section-title"><h2>' +
@@ -276,6 +333,27 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     '" /></label><div class="property-grid">';
   markup = markup + numberField("X", "x", shape.x, -MAX_COORDINATE, MAX_COORDINATE, fixed);
   markup = markup + numberField("Y", "y", shape.y, -MAX_COORDINATE, MAX_COORDINATE, fixed);
+  if (shape.coordinatePoint) {
+    const position = toMathPoint(shape);
+    markup =
+      markup +
+      numberField(
+        "坐标 x",
+        "coordinateX",
+        position.x,
+        -MAX_MATH_COORDINATE,
+        MAX_MATH_COORDINATE,
+        fixed
+      ) +
+      numberField(
+        "坐标 y",
+        "coordinateY",
+        position.y,
+        -MAX_MATH_COORDINATE,
+        MAX_MATH_COORDINATE,
+        fixed
+      );
+  }
   markup =
     markup +
     numberField("宽度", "width", shape.width, -MAX_COORDINATE, MAX_COORDINATE, fixed || point);
@@ -317,7 +395,12 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
       markup +
       numberField("点半径", "pointRadius", shape.pointRadius, 1, MAX_POINT_RADIUS, shape.locked);
   }
-  if (!isLine(shape) && shape.kind !== "pencil" && shape.kind !== "text") {
+  if (
+    !isLine(shape) &&
+    shape.kind !== "pencil" &&
+    shape.kind !== "text" &&
+    shape.kind !== "function"
+  ) {
     markup = markup + colorField("填充", "fill", shape.fill);
     markup = markup + checkboxField("无填充", "noFill", shape.fill === "none");
   }
@@ -333,6 +416,32 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     checkboxField("虚线", "dash", shape.dash) +
     checkboxField("辅助对象", "auxiliary", shape.auxiliary) +
     "</div></section>";
+  if (shape.formula !== undefined) {
+    markup =
+      markup +
+      '<section class="property-section"><h2>函数</h2><label class="property-field"><span>y =</span><input class="function-expression" data-property="expression" aria-label="函数解析式" maxlength="' +
+      MAX_EXPRESSION_LENGTH +
+      '" value="' +
+      escapeHtml(shape.formula.expression) +
+      '" /></label><div class="property-grid">' +
+      numberField(
+        "起始 x",
+        "domainMinimum",
+        shape.formula.minimum,
+        -MAX_MATH_COORDINATE,
+        MAX_MATH_COORDINATE,
+        false
+      ) +
+      numberField(
+        "结束 x",
+        "domainMaximum",
+        shape.formula.maximum,
+        -MAX_MATH_COORDINATE,
+        MAX_MATH_COORDINATE,
+        false
+      ) +
+      "</div></section>";
+  }
   if (shape.kind !== "text") {
     markup =
       markup +

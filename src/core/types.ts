@@ -9,7 +9,8 @@ export type ShapeKind =
   | "point"
   | "connector"
   | "polygon"
-  | "curve";
+  | "curve"
+  | "function";
 export type Tool =
   | ShapeKind
   | "select"
@@ -18,9 +19,13 @@ export type Tool =
   | "square"
   | "custom-polygon"
   | "circle"
+  | "ray"
+  | "straight"
+  | "coordinate-point"
+  | "fit"
   | ConstructionTool;
 export type ConstructionTool =
-  "segment" | "midpoint" | "intersection" | "parallel" | "perpendicular";
+  "segment" | "midpoint" | "intersection" | "parallel" | "perpendicular" | "bisector";
 export type RelationKind =
   | "none"
   | "connector"
@@ -29,7 +34,18 @@ export type RelationKind =
   | "intersection"
   | "parallel"
   | "perpendicular"
+  | "bisector"
+  | "fit"
   | "label";
+
+/** 保存函数解析式、绘制范围和拟合阶数，系数按常数项到最高次项排列 */
+export interface FunctionDefinition {
+  expression: string;
+  minimum: number;
+  maximum: number;
+  degree: number;
+  coefficients: number[];
+}
 
 /** 保存画布坐标，不包含浏览器窗口或缩放后的屏幕坐标 */
 export interface Point {
@@ -51,6 +67,9 @@ export interface Relation {
 export interface Shape {
   id: string;
   kind: ShapeKind;
+  lineType: "segment" | "ray" | "straight";
+  coordinatePoint: boolean;
+  formula?: FunctionDefinition;
   name: string;
   x: number;
   y: number;

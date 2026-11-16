@@ -11,12 +11,14 @@ import {
   Dot,
   Spline
 } from "lucide";
-import { Circle, CircleDashed } from "lucide";
+import { Circle, CircleDashed, MoveUpRight, MoveDiagonal, MapPin } from "lucide";
 import type { Tool } from "../core/types";
 
 /** 分组工具共用同一份名称和图标，菜单与按钮不会出现模式不一致 */
 export const TOOL_MODES = [
   { tool: "line", label: "线段", icon: Slash, group: "lines" },
+  { tool: "ray", label: "射线", icon: MoveUpRight, group: "lines" },
+  { tool: "straight", label: "直线", icon: MoveDiagonal, group: "lines" },
   { tool: "arrow", label: "箭头", icon: ArrowUpRight, group: "lines" },
   { tool: "connector", label: "连接线", icon: Link2, group: "lines" },
   { tool: "curve", label: "贝塞尔曲线", icon: Spline, group: "lines" },
@@ -28,8 +30,9 @@ export const TOOL_MODES = [
   { tool: "circle", label: "圆", icon: Circle, group: "ellipses" },
   { tool: "polygon", label: "正多边形", icon: Pentagon, group: "polygons" },
   { tool: "custom-polygon", label: "自定义多边形", icon: PenTool, group: "polygons" },
-  { tool: "point", label: "几何点", icon: Dot, group: "" },
-  { tool: "segment", label: "两点线段", icon: Slash, group: "" }
+  { tool: "point", label: "几何点", icon: Dot, group: "points" },
+  { tool: "coordinate-point", label: "坐标点", icon: MapPin, group: "points" },
+  { tool: "segment", label: "两点直线", icon: Slash, group: "" }
 ];
 
 /** 判断字符串是否为已配置的分组工具 */

@@ -5,6 +5,7 @@ import { compareLayers } from "../core/model";
 import { createFabricLabel, createFabricShape, updateFabricGeometry } from "./fabric-shapes";
 import { HANDLE_SIZE, SELECTION_COLOR } from "./fabric-shapes";
 import { CanvasFeedback } from "./canvas-feedback";
+import type { LockedObject } from "./canvas-feedback";
 import { LineControls } from "./line-controls";
 import { snapPosition } from "../geometry/snapping";
 import { addPointLabel } from "../objects/point-labels";
@@ -16,10 +17,12 @@ import { strokeInMarquee } from "../geometry/marquee";
 import { detachLabel } from "../objects/shape-labels";
 import { regularPoints, fitPolygon } from "../objects/shapes";
 import { isConstructionLine, updateRelations } from "../geometry/geometry";
+import { drawAxes } from "./axes";
 import {
   createShape,
   findShape,
   getBounds,
+  getRotatedBounds,
   GRID_SIZE,
   isDependent,
   isLine,
@@ -79,6 +82,8 @@ const PENCIL_WIDTH = 2;
 const WHEEL_ZOOM_SPEED = 0.005;
 // 按住左键后进入平移的等待时间，单位为毫秒
 const HOLD_PAN_DELAY = 450;
+// 长按期间允许的手部移动距离，单位为屏幕像素
+const HOLD_PAN_TOLERANCE = 12;
 
 /** 画布通过回调报告作品、选择和视口变化 */
 export interface CanvasCallbacks {
@@ -115,6 +120,7 @@ export class BoardCanvas {
   tool: Tool = "select";
   viewport: Viewport = { x: 40, y: 40, zoom: 1 };
   showGrid = true;
+  showAxes = true;
   snap = true;
   readOnly = false;
   stroke = DEFAULT_STROKE;
@@ -127,6 +133,7 @@ export class BoardCanvas {
   private labels = new Map<string, FabricObject>();
   private originals = new Map<string, Shape>();
   private initialScales = new Map<string, BoardPoint>();
+  private initialCenters = new Map<string, BoardPoint>();
   private gesture: DrawingGesture | null = null;
   private rebuilding = false;
   private initialFit = false;
@@ -146,8 +153,9 @@ export class BoardCanvas {
   private segmentStart = "";
   private constructionIds: string[] = [];
   private holdTimer = 0;
-  private holdPosition: { x: number; y: number } | null = null;
+  private holdPosition: { x: number; y: number; pointerId: number } | null = null;
   private holdPanning = false;
+  private blankPanning = false;
   private constructionClick: ConstructionTool | null = null;
 
   /** 创建画布并绑定库提供的选择、变换与绘制事件 */
@@ -226,6 +234,7 @@ export class BoardCanvas {
       this.fabric.requestRenderAll();
     }
     this.callbacks.viewChanged();
+    this.refreshExtendedLines();
   }
 
   /** 返回已选中的作品对象，忽略已经删除的编号 */
@@ -306,7 +315,13 @@ export class BoardCanvas {
         if (!object.visible) {
           continue;
         }
-        const box = object.getBoundingRect();
+        let box = object.getBoundingRect();
+        const id = this.ids.get(object);
+        const shape = findShape(this.document, id || "");
+        if (shape !== undefined && shape.kind === "line" && shape.lineType !== "segment") {
+          const anchors = getRotatedBounds(shape);
+          box = { left: anchors.x, top: anchors.y, width: anchors.width, height: anchors.height };
+        }
         left = Math.min(left, box.left);
         top = Math.min(top, box.top);
         right = Math.max(right, box.left + box.width);
@@ -341,6 +356,7 @@ export class BoardCanvas {
     this.viewport.zoom = this.fabric.getZoom();
     this.viewport.x = transform[4];
     this.viewport.y = transform[5];
+    this.refreshExtendedLines();
     this.callbacks.viewChanged();
   }
 
@@ -354,7 +370,36 @@ export class BoardCanvas {
       this.viewport.x,
       this.viewport.y
     ]);
+    this.refreshExtendedLines();
     this.callbacks.viewChanged();
+  }
+
+  /** 视口范围只影响无限线的显示，不改变保存的两个方向点 */
+  private viewBounds(): Bounds {
+    return {
+      x: -this.viewport.x / this.viewport.zoom,
+      y: -this.viewport.y / this.viewport.zoom,
+      width: this.fabric.getWidth() / this.viewport.zoom,
+      height: this.fabric.getHeight() / this.viewport.zoom
+    };
+  }
+
+  /** 平移或缩放后重新裁剪直线和射线，不生成极大尺寸的离屏画布 */
+  private refreshExtendedLines(): void {
+    if (this.transforming || this.rebuilding) {
+      return;
+    }
+    for (const shape of this.document.shapes) {
+      if (shape.kind === "line" && shape.lineType !== "segment") {
+        const object = this.objects.get(shape.id);
+        if (object !== undefined) {
+          updateFabricGeometry(object, shape, this.viewBounds());
+          const center = object.getCenterPoint();
+          this.initialCenters.set(shape.id, { x: center.x, y: center.y });
+        }
+      }
+    }
+    this.fabric.requestRenderAll();
   }
 
   /** 从对象列表选择对象，追加选择用于 Shift 多选 */
@@ -386,7 +431,7 @@ export class BoardCanvas {
 
   /** 把库中的选区转换为作品编号，背景和文字标签不参与选区 */
   private handleSelection(): void {
-    if (this.rebuilding || this.spacePressed || this.tool === "hand") {
+    if (this.rebuilding || this.spacePressed || this.holdPanning || this.tool === "hand") {
       return;
     }
     this.selectedIds = [];
@@ -507,10 +552,22 @@ export class BoardCanvas {
     if (shape === undefined || shape.locked || this.readOnly) {
       return;
     }
+    if (shape.kind === "function") {
+      return;
+    }
     if (isDependent(shape)) {
       shape.relation = { kind: "none", sources: [] };
     }
     const center = object.getCenterPoint();
+    if (shape.kind === "line" && shape.lineType !== "segment") {
+      const original = this.originals.get(id);
+      const initial = this.initialCenters.get(id);
+      if (original !== undefined && initial !== undefined) {
+        shape.x = original.x + center.x - initial.x;
+        shape.y = original.y + center.y - initial.y;
+      }
+      return;
+    }
     if (object instanceof Path && (shape.kind === "arrow" || shape.kind === "connector")) {
       const radians = (object.getTotalAngle() * Math.PI) / 180;
       center.x =
@@ -579,10 +636,16 @@ export class BoardCanvas {
   private handleMoving(event: { target: FabricObject }): void {
     if (this.snap) {
       const center = event.target.getCenterPoint();
-      const snapped = new Point(
-        Math.round(center.x / GRID_SIZE) * GRID_SIZE,
-        Math.round(center.y / GRID_SIZE) * GRID_SIZE
-      );
+      const id = this.ids.get(event.target);
+      const shape = findShape(this.document, id || "");
+      let position = {
+        x: Math.round(center.x / GRID_SIZE) * GRID_SIZE,
+        y: Math.round(center.y / GRID_SIZE) * GRID_SIZE
+      };
+      if (shape !== undefined && shape.kind === "point") {
+        position = this.snapPoint(center, shape.id);
+      }
+      const snapped = new Point(position.x, position.y);
       event.target.setXY(snapped, "center", "center");
       event.target.setCoords();
     }
@@ -635,7 +698,7 @@ export class BoardCanvas {
     for (const shape of this.document.shapes) {
       const object = this.objects.get(shape.id);
       if (object !== undefined && isDependent(shape)) {
-        updateFabricGeometry(object, shape);
+        updateFabricGeometry(object, shape, this.viewBounds());
         object.visible = !shape.hidden && !invalid.has(shape.id);
       }
       const label = this.labels.get(shape.id);
@@ -654,7 +717,8 @@ export class BoardCanvas {
 
   /** 锁定对象和构造对象仍可选择，但不能通过控制点破坏关系 */
   private configureObject(shape: Shape, object: FabricObject): void {
-    const fixed = this.readOnly || isConstructionTool(this.tool) || shape.locked;
+    const fixed =
+      this.readOnly || isConstructionTool(this.tool) || shape.locked || shape.kind === "function";
     const stretchable = !this.readOnly && this.tool === "select" && isConstructionLine(shape);
     object.set({
       selectable: this.tool === "select",
@@ -676,7 +740,8 @@ export class BoardCanvas {
         this.isSnapEnabled.bind(this),
         this.handleEndpointChanged.bind(this),
         this.canEdit.bind(this),
-        this.snapPoint.bind(this)
+        this.snapPoint.bind(this),
+        this.viewBounds.bind(this)
       );
       controls.install(object);
     }
@@ -853,6 +918,9 @@ export class BoardCanvas {
     if (this.tool === "select" || this.tool === "pencil") {
       return;
     }
+    if (this.tool === "coordinate-point" || this.tool === "function" || this.tool === "fit") {
+      return;
+    }
     if (isConstructionTool(this.tool)) {
       this.constructionClick = this.tool;
       return;
@@ -883,7 +951,17 @@ export class BoardCanvas {
     if (kind === "circle") {
       kind = "ellipse";
     }
+    if (kind === "ray" || kind === "straight") {
+      kind = "line";
+    }
     const shape = createShape(kind, start);
+    if (this.tool === "ray" || this.tool === "straight") {
+      shape.lineType = this.tool;
+      shape.name = "直线";
+      if (this.tool === "ray") {
+        shape.name = "射线";
+      }
+    }
     shape.stroke = this.stroke;
     shape.fill = this.fill;
     shape.layer = this.document.shapes.length;
@@ -992,7 +1070,7 @@ export class BoardCanvas {
       this.fabric.remove(previous);
       previous.dispose();
     }
-    const preview = createFabricShape(shape);
+    const preview = createFabricShape(shape, this.viewBounds());
     preview.set({ selectable: false, evented: false, opacity: 0.75 });
     this.fabric.add(preview);
     this.objects.set(shape.id, preview);
@@ -1206,6 +1284,8 @@ export class BoardCanvas {
   cancelGesture(): void {
     this.clearHold();
     this.holdPanning = false;
+    this.blankPanning = false;
+    this.host.dataset.panning = "false";
     this.constructionIds = [];
     this.constructionClick = null;
     this.waitingForClick = false;
@@ -1277,13 +1357,26 @@ export class BoardCanvas {
     this.overlapClick = null;
     if (event.button === 0 && !this.spacePressed) {
       this.clearHold();
-      this.holdPosition = { x: event.clientX, y: event.clientY };
+      this.holdPosition = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
       this.holdTimer = window.setTimeout(this.startHoldPan.bind(this), HOLD_PAN_DELAY);
     }
     if (this.tool !== "select" || this.spacePressed) {
       return;
     }
     const position = this.fabric.getScenePoint(event);
+    if (event.button === 0 && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+      const target = this.fabric.searchPossibleTargets(this.fabric.getObjects(), position).target;
+      const active = this.fabric.getActiveObject();
+      let control = false;
+      if (active !== undefined) {
+        control = active.findControl(this.fabric.getViewportPoint(event)) !== undefined;
+      }
+      if (target === undefined && !control) {
+        this.startHoldPan();
+        this.blankPanning = true;
+        return;
+      }
+    }
     if (event.button === 2) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -1389,12 +1482,21 @@ export class BoardCanvas {
     this.holdPosition = null;
   }
 
-  /** 普通快速拖动继续绘制或移动对象，只有原地长按会进入平移 */
+  /** 平移使用窗口级指针坐标，移出画布后仍能继续拖动 */
   private handleHoldMove(event: PointerEvent): void {
+    if (this.holdPanning && this.gesture !== null) {
+      const bounds = this.host.getBoundingClientRect();
+      this.viewport.x = this.gesture.view.x + event.clientX - bounds.left - this.gesture.screen.x;
+      this.viewport.y = this.gesture.view.y + event.clientY - bounds.top - this.gesture.screen.y;
+      this.applyViewport();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     const start = this.holdPosition;
     if (
       start !== null &&
-      Math.hypot(event.clientX - start.x, event.clientY - start.y) > CLICK_DISTANCE
+      Math.hypot(event.clientX - start.x, event.clientY - start.y) > HOLD_PAN_TOLERANCE
     ) {
       this.clearHold();
     }
@@ -1408,12 +1510,14 @@ export class BoardCanvas {
     }
     const bounds = this.host.getBoundingClientRect();
     const screen = { x: start.x - bounds.left, y: start.y - bounds.top };
+    this.fabric.upperCanvasEl.setPointerCapture(start.pointerId);
     this.cancelGesture();
     this.rebuilding = true;
     this.fabric.endCurrentTransform();
     this.fabric.discardActiveObject();
     this.rebuilding = false;
     this.holdPanning = true;
+    this.host.dataset.panning = "true";
     this.gesture = {
       start: { x: 0, y: 0 },
       screen: screen,
@@ -1511,6 +1615,27 @@ export class BoardCanvas {
   /** 结束右键框选，或在多选后单击成员将其移出选区 */
   private handleSelectionRelease(event: PointerEvent): void {
     this.clearHold();
+    if (this.holdPanning) {
+      if (this.blankPanning && this.gesture !== null) {
+        const bounds = this.host.getBoundingClientRect();
+        const distance = Math.hypot(
+          event.clientX - bounds.left - this.gesture.screen.x,
+          event.clientY - bounds.top - this.gesture.screen.y
+        );
+        if (distance < CLICK_DISTANCE) {
+          this.selectedIds = [];
+        }
+      }
+      this.holdPanning = false;
+      this.blankPanning = false;
+      this.host.dataset.panning = "false";
+      this.gesture = null;
+      this.updateToolMode();
+      this.restoreSelection();
+      this.fabric.requestRenderAll();
+      this.callbacks.selected();
+      return;
+    }
     const overlap = this.overlapClick;
     this.overlapClick = null;
     if (overlap !== null) {
@@ -1552,7 +1677,12 @@ export class BoardCanvas {
           let hit =
             object.intersectsWithRect(topLeft, bottomRight) ||
             object.isContainedWithinRect(topLeft, bottomRight);
-          if (isLine(shape) || shape.kind === "curve" || shape.kind === "pencil") {
+          if (
+            isLine(shape) ||
+            shape.kind === "curve" ||
+            shape.kind === "pencil" ||
+            shape.kind === "function"
+          ) {
             hit = strokeInMarquee(shape, {
               x: topLeft.x,
               y: topLeft.y,
@@ -1746,6 +1876,9 @@ export class BoardCanvas {
         }
       }
     }
+    if (this.showAxes) {
+      drawAxes(context, this.viewport, width, height);
+    }
     context.restore();
   }
 
@@ -1764,25 +1897,28 @@ export class BoardCanvas {
     this.labels.clear();
     this.originals.clear();
     this.initialScales.clear();
+    this.initialCenters.clear();
     const invalid = updateRelations(this.document);
     const ordered = this.document.shapes.slice();
     ordered.sort(compareLayers);
-    const locked: FabricObject[] = [];
+    const locked: LockedObject[] = [];
     for (const shape of ordered) {
       if (shape.hidden) {
         continue;
       }
-      const object = createFabricShape(shape);
+      const object = createFabricShape(shape, this.viewBounds());
       this.configureObject(shape, object);
       object.visible = !invalid.has(shape.id);
       this.fabric.add(object);
       if (shape.locked) {
-        locked.push(object);
+        locked.push({ object: object, shape: shape });
       }
       this.objects.set(shape.id, object);
       this.ids.set(object, shape.id);
       this.originals.set(shape.id, structuredClone(shape));
       this.initialScales.set(shape.id, { x: object.scaleX, y: object.scaleY });
+      const center = object.getCenterPoint();
+      this.initialCenters.set(shape.id, { x: center.x, y: center.y });
       const label = createFabricLabel(shape);
       if (label !== null) {
         label.visible = object.visible;

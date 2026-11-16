@@ -12,13 +12,16 @@ export function strokeInMarquee(shape: Shape, bounds: Bounds): boolean {
   );
   const points = outlinePoints(shape);
   for (const point of points) {
-    if (box.contains(new Flatten.Point(point.x, point.y))) {
+    if (Number.isFinite(point.x) && box.contains(new Flatten.Point(point.x, point.y))) {
       return true;
     }
   }
   for (let index = 1; index < points.length; index = index + 1) {
     const start = points[index - 1];
     const end = points[index];
+    if (!Number.isFinite(start.x) || !Number.isFinite(end.x)) {
+      continue;
+    }
     const segment = new Flatten.Segment(
       new Flatten.Point(start.x, start.y),
       new Flatten.Point(end.x, end.y)

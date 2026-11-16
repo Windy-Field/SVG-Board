@@ -72,7 +72,8 @@ export const SHAPE_LABELS: Record<ShapeKind, string> = {
   point: "点",
   connector: "连接线",
   polygon: "多边形",
-  curve: "贝塞尔曲线"
+  curve: "贝塞尔曲线",
+  function: "函数"
 };
 
 /** 新建空白作品，返回可保存为项目文件的完整结构 */
@@ -94,6 +95,8 @@ export function createShape(kind: ShapeKind, position: Point): Shape {
   return {
     id: crypto.randomUUID(),
     kind: kind,
+    lineType: "segment",
+    coordinatePoint: false,
     name: SHAPE_LABELS[kind],
     x: position.x,
     y: position.y,

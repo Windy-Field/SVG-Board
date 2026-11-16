@@ -2,6 +2,12 @@
 
 The browser application uses Fabric.js, Flatten.js (including interval-tree), Lucide, Marked, and DOMPurify. The application does not bundle Node.js-only canvas or jsdom runtimes in the browser. Development dependency licenses remain available in their installed packages and lockfile
 
+新增数学功能复用以下项目，发布包在 `licenses/dependencies/` 保留运行时依赖的许可和署名原文
+
+- mathjs 15.2.0，Apache-2.0，https://github.com/josdejong/mathjs，用于表达式解析、编译与求值
+- ml-regression-polynomial 4.0.0，MIT，https://github.com/mljs/regression-polynomial，用于线性和多项式最小二乘拟合
+- d3-array 3.2.5，ISC，https://github.com/d3/d3-array，用于缩放后的坐标轴刻度和比例尺
+
 Marked 18.2.0: https://github.com/markedjs/marked (MIT, with Markdown BSD notices). The complete license is included in `licenses/marked-LICENSE` in built distributions and in `node_modules/marked/LICENSE` during development
 
 DOMPurify 3.4.18: https://github.com/cure53/DOMPurify (Apache-2.0 OR MPL-2.0). This distribution uses Apache-2.0. The complete license is included in `licenses/dompurify-LICENSE` in built distributions and in `node_modules/dompurify/LICENSE` during development

@@ -43,7 +43,7 @@ export function pasteShapes(document: BoardDocument, clipboard: Shape[]): string
     }
     shape.id = id;
     shape.name = shape.name + " 副本";
-    if (!isDependent(shape)) {
+    if (!isDependent(shape) && shape.kind !== "function") {
       shape.locked = false;
     }
     const group = groups.get(shape.group);
@@ -177,6 +177,9 @@ export function constructShape(
     sources.push(lines[0].id, lines[1].id);
     shape.name = "交点";
     shape.text = "I";
+  } else if (kind === "bisector" && lines.length === 2 && selected.length === 2) {
+    sources.push(lines[0].id, lines[1].id);
+    shape.name = "角平分线";
   } else if (
     (kind === "parallel" || kind === "perpendicular") &&
     lines.length === 1 &&
@@ -195,8 +198,8 @@ export function constructShape(
     if (kind === "segment") {
       message = "请选择两个点";
     } else if (kind === "midpoint") {
-      message = "请选择一条线段";
-    } else if (kind === "intersection") {
+      message = "请选择一条线";
+    } else if (kind === "intersection" || kind === "bisector") {
       message = "请选择两条线段";
     }
     throw new Error(message);
@@ -205,6 +208,9 @@ export function constructShape(
   shape.fill = "none";
   shape.relation = { kind: kind, sources: sources };
   shape.locked = true;
+  if (shape.kind === "line") {
+    shape.lineType = "straight";
+  }
   shape.layer = document.shapes.length;
   document.shapes.push(shape);
   updateRelations(document);

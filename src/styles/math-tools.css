@@ -1,0 +1,52 @@
+/* 数学输入与比例尺独立维护，作品外观仍使用对象属性 */
+.canvas-scale {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: var(--z-raised);
+  padding: 4px 0;
+  border-bottom: 2px solid var(--color-muted);
+  color: var(--color-muted);
+  background: var(--color-paper);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.canvas-scale::before,
+.canvas-scale::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  height: 6px;
+  border-left: 1px solid var(--color-muted);
+}
+.canvas-scale::before {
+  left: 0;
+}
+.canvas-scale::after {
+  right: 0;
+}
+.fit-modes {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.fit-modes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#math-error {
+  color: var(--color-error);
+  min-height: 20px;
+}
+#math-dialog textarea {
+  min-height: 130px;
+  font-family: monospace;
+}
+.function-expression {
+  font-family: monospace;
+}

@@ -53,7 +53,11 @@ export function snapPosition(
       position.x > bounds.x + bounds.width + radius ||
       position.y < bounds.y - radius ||
       position.y > bounds.y + bounds.height + radius;
-    if (shape.kind !== "connector" && outside) {
+    if (
+      shape.kind !== "connector" &&
+      !(shape.kind === "line" && shape.lineType !== "segment") &&
+      outside
+    ) {
       continue;
     }
     if (shape.kind === "point") {
@@ -64,7 +68,12 @@ export function snapPosition(
     if (isLine(shape)) {
       const endpoints = getLinePoints(shape);
       vertices.push(endpoints[0], endpoints[1]);
-    } else if (shape.kind !== "ellipse" && shape.kind !== "curve" && shape.kind !== "pencil") {
+    } else if (
+      shape.kind !== "ellipse" &&
+      shape.kind !== "curve" &&
+      shape.kind !== "pencil" &&
+      shape.kind !== "function"
+    ) {
       for (const point of points) {
         vertices.push(point);
       }
@@ -72,6 +81,9 @@ export function snapPosition(
     for (let index = 1; index < points.length; index = index + 1) {
       const start = points[index - 1];
       const end = points[index];
+      if (!Number.isFinite(start.x) || !Number.isFinite(end.x)) {
+        continue;
+      }
       if (
         position.x < Math.min(start.x, end.x) - radius ||
         position.x > Math.max(start.x, end.x) + radius ||

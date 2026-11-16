@@ -1,6 +1,7 @@
 import { Point } from "fabric";
 import type { Canvas, FabricObject } from "fabric";
-import type { Bounds } from "../core/types";
+import type { Bounds, Shape } from "../core/types";
+import { getRotatedBounds } from "../core/model";
 
 // 悬停和框选的提示颜色
 const HOVER_COLOR = "#2563eb";
@@ -10,13 +11,22 @@ const OUTLINE_WIDTH = 1.5;
 const LOCK_BACKGROUND = "#ffffff";
 // 锁定标记的描边颜色
 const LOCK_COLOR = "#475569";
+// 锁标记相对对象右上角的偏移，单位为屏幕像素
+const LOCK_OFFSET_X = -8;
+const LOCK_OFFSET_Y = -18;
+
+/** 锁标记保存对象与模型，位置不依赖无限线临时裁剪后的外框 */
+export interface LockedObject {
+  object: FabricObject;
+  shape: Shape;
+}
 
 /** 只绘制悬停提示，不创建作品对象，也不参与保存与撤销 */
 export class CanvasFeedback {
   private canvas: Canvas;
   private hovered: FabricObject | null = null;
   private marquee: Bounds | null = null;
-  private locked: FabricObject[] = [];
+  private locked: LockedObject[] = [];
 
   /** 绑定库的绘制事件，在场景绘制后补充鼠标指向提示 */
   constructor(canvas: Canvas) {
@@ -40,22 +50,23 @@ export class CanvasFeedback {
   }
 
   /** 保存需要显示锁标记的对象，标记仅用于编辑画面 */
-  setLocked(objects: FabricObject[]): void {
+  setLocked(objects: LockedObject[]): void {
     this.locked = objects;
   }
 
   /** 锁定对象右上角显示小锁，标记不随作品导出 */
   private drawLocks(context: CanvasRenderingContext2D): void {
-    for (const object of this.locked) {
+    for (const item of this.locked) {
+      const object = item.object;
       if (!object.visible || object.canvas !== this.canvas) {
         continue;
       }
-      const bounds = object.getBoundingRect();
-      const anchor = new Point(bounds.left + bounds.width, bounds.top).transform(
+      const bounds = getRotatedBounds(item.shape);
+      const anchor = new Point(bounds.x + bounds.width, bounds.y).transform(
         this.canvas.viewportTransform
       );
-      const left = anchor.x - 8;
-      const top = anchor.y - 18;
+      const left = anchor.x + LOCK_OFFSET_X;
+      const top = anchor.y + LOCK_OFFSET_Y;
       context.save();
       context.fillStyle = LOCK_BACKGROUND;
       context.strokeStyle = LOCK_COLOR;

@@ -89,6 +89,7 @@ function addSegment(document: BoardDocument, first: Shape, second: Shape): Shape
   shape.fill = "none";
   shape.relation = { kind: "segment", sources: [first.id, second.id] };
   shape.locked = true;
+  shape.lineType = "straight";
   shape.layer = -1;
   document.shapes.push(shape);
   return shape;

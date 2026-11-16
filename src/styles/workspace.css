@@ -90,8 +90,8 @@
   width: 96px;
 }
 .tools {
-  /* 14 个工具共享可用高度，其余高度留给色板、分隔线和间距 */
-  --rail-control: clamp(18px, calc((100cqh - 128px) / 14), 40px);
+  /* 17 个工具共享可用高度，其余高度留给色板、分隔线和间距 */
+  --rail-control: clamp(18px, calc((100cqh - 128px) / 17), 40px);
   --rail-icon: clamp(14px, calc(var(--rail-control) - 14px), 23px);
   gap: 2px;
   padding: 8px 0;
