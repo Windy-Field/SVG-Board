@@ -8,7 +8,7 @@ import { CanvasFeedback } from "./canvas-feedback";
 import type { LockedObject } from "./canvas-feedback";
 import { LineControls } from "./line-controls";
 import { snapPosition } from "../geometry/snapping";
-import { addPointLabel } from "../objects/point-labels";
+import { addPointLabel, nextPointName } from "../objects/point-labels";
 import { OverlapSelection } from "./overlap-selection";
 import { CurveControls } from "./curve-controls";
 import { EditorCanvas } from "./editor-canvas";
@@ -358,6 +358,7 @@ export class BoardCanvas {
     this.viewport.y = transform[5];
     this.refreshExtendedLines();
     this.callbacks.viewChanged();
+    this.fabric.renderAll();
   }
 
   /** 将模型中的视角写入库，同步状态栏 */
@@ -372,6 +373,7 @@ export class BoardCanvas {
     ]);
     this.refreshExtendedLines();
     this.callbacks.viewChanged();
+    this.fabric.renderAll();
   }
 
   /** 视口范围只影响无限线的显示，不改变保存的两个方向点 */
@@ -630,9 +632,10 @@ export class BoardCanvas {
     }
     this.refreshRelationships();
     this.callbacks.viewChanged();
+    this.fabric.renderAll();
   }
 
-  /** 网格吸附只调整拖动位置，不干扰缩放或旋转 */
+  /** 拖动时按对象类型吸附，不干扰缩放或旋转 */
   private handleMoving(event: { target: FabricObject }): void {
     if (this.snap) {
       const center = event.target.getCenterPoint();
@@ -706,7 +709,13 @@ export class BoardCanvas {
         const replacement = createFabricLabel(shape);
         label.visible = !shape.hidden && !invalid.has(shape.id);
         if (replacement !== null) {
-          label.set({ left: replacement.left, top: replacement.top, angle: replacement.angle });
+          label.set({
+            left: replacement.left,
+            top: replacement.top,
+            angle: replacement.angle,
+            text: replacement.text,
+            width: replacement.width
+          });
           label.setCoords();
           replacement.dispose();
         }
@@ -780,6 +789,7 @@ export class BoardCanvas {
   private handleEndpointChanged(): void {
     this.transforming = true;
     this.refreshRelationships();
+    this.fabric.renderAll();
   }
 
   /** 获取画布坐标，需要时吸附网格 */
@@ -790,7 +800,14 @@ export class BoardCanvas {
 
   /** 绘制和端点编辑共用吸附规则，排除正在调整的对象 */
   private snapPoint(position: BoardPoint, excluded: string): BoardPoint {
-    return snapPosition(this.document, position, this.snap, this.viewport.zoom, excluded);
+    return snapPosition(
+      this.document,
+      position,
+      this.snap,
+      this.viewport.zoom,
+      excluded,
+      this.showAxes
+    );
   }
 
   /** 优先采用附近已有几何点，点击空白处时新建独立端点 */
@@ -814,14 +831,14 @@ export class BoardCanvas {
     point.stroke = this.stroke;
     point.fill = this.fill;
     point.layer = this.document.shapes.length;
-    point.name = "P" + String(this.document.shapes.length + 1);
+    point.name = nextPointName(this.document);
     point.text = point.name;
     this.document.shapes.push(point);
     addPointLabel(this.document, point);
     return point;
   }
 
-  /** 两次点击确定线段来源，完成后可继续创建下一条线段 */
+  /** 两次点击确定来源点，完成后可继续创建下一条直线 */
   private placeSegmentPoint(position: BoardPoint): void {
     if (this.document.shapes.length > MAX_SHAPES - 3) {
       this.callbacks.notify("对象数量已达上限");
@@ -973,7 +990,8 @@ export class BoardCanvas {
       }
     }
     if (shape.kind === "point") {
-      shape.text = "P" + String(this.document.shapes.length + 1);
+      shape.name = nextPointName(this.document);
+      shape.text = shape.name;
     }
     if (shape.kind === "connector") {
       let id = "";

@@ -15,6 +15,7 @@ import {
   MAX_FIT_DEGREE
 } from "../math/plots";
 import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
+import { addPointLabel, nextPointName } from "../objects/point-labels";
 
 // 批量坐标输入框允许的最大字符数
 const MAX_POINTS_INPUT = 10000;
@@ -142,10 +143,11 @@ function closeDialog(): void {
 }
 
 /** 将数学坐标创建为普通几何点，点的颜色和属性继续沿用现有对象 */
-function createCoordinateShape(position: Point): Shape {
+function createCoordinateShape(position: Point, pending: Shape[]): Shape {
   const shape = createShape("point", toCanvasPoint(position));
   shape.coordinatePoint = true;
-  shape.name = "(" + position.x + ", " + position.y + ")";
+  shape.name = nextPointName(canvas.document, pending);
+  shape.text = shape.name;
   shape.stroke = canvas.stroke;
   return shape;
 }
@@ -158,7 +160,7 @@ function createFitShapes(text: string, minimum: number, maximum: number): Shape[
   if (sources.length < 2) {
     sources = [];
     for (const position of parseCoordinatePoints(text)) {
-      const point = createCoordinateShape(position);
+      const point = createCoordinateShape(position, additions);
       sources.push(point);
       additions.push(point);
       points.push(position);
@@ -190,7 +192,7 @@ function createMathShapes(text: string): Shape[] {
   const additions: Shape[] = [];
   if (currentMode === "coordinate-point") {
     for (const position of parseCoordinatePoints(text)) {
-      additions.push(createCoordinateShape(position));
+      additions.push(createCoordinateShape(position, additions));
     }
     return additions;
   }
@@ -232,7 +234,13 @@ function handleSubmit(event: SubmitEvent): void {
       return;
     }
     const additions = createMathShapes(textarea.value);
-    if (canvas.document.shapes.length + additions.length > MAX_SHAPES) {
+    let labelCount = 0;
+    for (const shape of additions) {
+      if (shape.kind === "point") {
+        labelCount = labelCount + 1;
+      }
+    }
+    if (canvas.document.shapes.length + additions.length + labelCount > MAX_SHAPES) {
       throw new Error("对象数量已达上限");
     }
     canvas.selectedIds = [];
@@ -240,6 +248,10 @@ function handleSubmit(event: SubmitEvent): void {
       shape.layer = canvas.document.shapes.length;
       canvas.document.shapes.push(shape);
       canvas.selectedIds.push(shape.id);
+    }
+    // 点先全部写入，再添加文字，保证拟合来源和点名的依赖顺序都有效
+    for (const shape of additions) {
+      addPointLabel(canvas.document, shape);
     }
     canvas.showAxes = true;
     canvas.setTool("select");

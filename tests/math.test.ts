@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compileExpression, evaluateExpression } from "../src/math/expressions";
 import { parseCoordinatePoints, toCanvasPoint, toMathPoint } from "../src/math/coordinates";
-import { createFunctionShape, fitPolynomial } from "../src/math/plots";
+import { createFunctionShape, fitPolynomial, getFunctionLabel } from "../src/math/plots";
 import { createDocument, createShape } from "../src/core/model";
 import { parseDocument } from "../src/storage/document";
 import { constructShape } from "../src/core/commands";
@@ -10,6 +10,7 @@ import { updateRelations } from "../src/geometry/geometry";
 import { extendedLinePoints } from "../src/geometry/extended-lines";
 import { snapPosition } from "../src/geometry/snapping";
 import { axisStep } from "../src/canvas/axes";
+import { addPointLabel, nextPointName } from "../src/objects/point-labels";
 
 /** 数学坐标正方向、批量格式与输入范围共用同一规则 */
 function testCoordinates(): void {
@@ -168,3 +169,107 @@ function testScale(): void {
   assert.ok(axisStep(0.25, 800) > axisStep(2, 800));
 }
 test("坐标轴动态分度", testScale);
+
+/** 字母用完后按轮次编号，隐藏点和批量候选也保留已经占用的名字 */
+function testPointNames(): void {
+  const document = createDocument();
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  for (let index = 0; index < 54; index = index + 1) {
+    let expected = alphabet[index % alphabet.length];
+    const round = Math.floor(index / alphabet.length);
+    if (round > 0) {
+      expected = expected + round;
+    }
+    assert.equal(nextPointName(document), expected);
+    const point = createShape("point", { x: index, y: 0 });
+    point.name = expected;
+    point.hidden = true;
+    document.shapes.push(point);
+  }
+  const pending = createShape("point", { x: 0, y: 0 });
+  pending.name = "C2";
+  assert.equal(nextPointName(document, [pending]), "D2");
+}
+test("几何点按字母和轮次分配名字", testPointNames);
+
+/** 坐标轴和曲线交点优先，关闭坐标轴后恢复普通对象与网格吸附 */
+function testAxisSnapping(): void {
+  const document = createDocument();
+  assert.deepEqual(snapPosition(document, { x: 604, y: 313 }, true, 1, "", true), {
+    x: 600,
+    y: 313
+  });
+  assert.deepEqual(snapPosition(document, { x: 347, y: 406 }, true, 1, "", true), {
+    x: 347,
+    y: 400
+  });
+  assert.deepEqual(snapPosition(document, { x: 604, y: 406 }, true, 1, "", true), {
+    x: 600,
+    y: 400
+  });
+  assert.deepEqual(snapPosition(document, { x: 604, y: 313 }, true, 1, "", false), {
+    x: 600,
+    y: 320
+  });
+  const curve = createFunctionShape({
+    expression: "0.325",
+    minimum: -5,
+    maximum: 5,
+    degree: 0,
+    coefficients: []
+  });
+  document.shapes.push(curve);
+  const intersection = snapPosition(document, { x: 604, y: 389 }, true, 1, "", true);
+  assert.ok(Math.abs(intersection.x - 600) < 0.000001);
+  assert.ok(Math.abs(intersection.y - 387) < 0.000001);
+}
+test("坐标轴参与优先吸附和交点计算", testAxisSnapping);
+
+/** 拟合说明使用简洁系数，普通函数去掉重复的 y 前缀 */
+function testFormulaLabels(): void {
+  const shape = createFunctionShape({
+    expression: "x^2 + 2x + 1",
+    minimum: -5,
+    maximum: 5,
+    degree: 2,
+    coefficients: [1.00000000001, 2.00000000001, 0.99999999999]
+  });
+  assert.equal(getFunctionLabel(shape), "y = x^2 + 2x + 1");
+  const direct = createFunctionShape({
+    expression: "y = sin(x)",
+    minimum: -5,
+    maximum: 5,
+    degree: 0,
+    coefficients: []
+  });
+  assert.equal(getFunctionLabel(direct), "y = sin(x)");
+}
+test("函数与拟合解析式显示", testFormulaLabels);
+
+/** 旧版未生成点名的坐标点读取后补齐文字，再次读取不重复添加 */
+function testLegacyCoordinateLabel(): void {
+  const document = createDocument();
+  const point = createShape("point", toCanvasPoint({ x: 2, y: 3 }));
+  point.name = "(2, 3)";
+  point.coordinatePoint = true;
+  document.shapes.push(point);
+  const restored = parseDocument(JSON.stringify(document));
+  assert.equal(restored.shapes[0].name, "A");
+  assert.equal(restored.shapes[1].text, "A");
+  assert.equal(restored.shapes[1].relation.sources[0], point.id);
+  assert.equal(parseDocument(JSON.stringify(restored)).shapes.length, 2);
+}
+test("旧坐标点补齐点名且不重复", testLegacyCoordinateLabel);
+
+/** 拖动点时不吸附自己的点名文本，避免新位置被文字外框拉回 */
+function testOwnLabelSnapping(): void {
+  const document = createDocument();
+  const point = createShape("point", { x: 100, y: 100 });
+  point.name = "A";
+  point.text = "A";
+  document.shapes.push(point);
+  addPointLabel(document, point);
+  const snapped = snapPosition(document, { x: 109, y: 84 }, true, 1, point.id, false);
+  assert.deepEqual(snapped, { x: 100, y: 80 });
+}
+test("拖动点不吸附自己的点名", testOwnLabelSnapping);

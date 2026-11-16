@@ -4,7 +4,7 @@ import type { BoardDocument, Shape } from "../core/types";
 
 /** 将图形上的标签转换为独立文字，保留标签当前的外观和位置 */
 export function detachLabel(document: BoardDocument, owner: Shape): Shape | null {
-  if (document.shapes.length >= MAX_SHAPES) {
+  if (owner.kind === "function" || document.shapes.length >= MAX_SHAPES) {
     return null;
   }
   const object = createFabricLabel(owner);

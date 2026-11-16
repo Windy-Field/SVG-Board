@@ -1,7 +1,8 @@
 import { Point } from "fabric";
 import type { Canvas, FabricObject } from "fabric";
 import type { Bounds, Shape } from "../core/types";
-import { getRotatedBounds } from "../core/model";
+import { getRotatedBounds, isLine } from "../core/model";
+import { getLinePoints } from "../geometry/geometry";
 
 // 悬停和框选的提示颜色
 const HOVER_COLOR = "#2563eb";
@@ -54,7 +55,7 @@ export class CanvasFeedback {
     this.locked = objects;
   }
 
-  /** 锁定对象右上角显示小锁，标记不随作品导出 */
+  /** 普通对象在右上角显示小锁，线条标记跟随实际方向点，不随作品导出 */
   private drawLocks(context: CanvasRenderingContext2D): void {
     for (const item of this.locked) {
       const object = item.object;
@@ -62,9 +63,12 @@ export class CanvasFeedback {
         continue;
       }
       const bounds = getRotatedBounds(item.shape);
-      const anchor = new Point(bounds.x + bounds.width, bounds.y).transform(
-        this.canvas.viewportTransform
-      );
+      let position = new Point(bounds.x + bounds.width, bounds.y);
+      if (isLine(item.shape)) {
+        const endpoints = getLinePoints(item.shape);
+        position = new Point(endpoints[1].x, endpoints[1].y);
+      }
+      const anchor = position.transform(this.canvas.viewportTransform);
       const left = anchor.x + LOCK_OFFSET_X;
       const top = anchor.y + LOCK_OFFSET_Y;
       context.save();

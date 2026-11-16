@@ -1,4 +1,5 @@
 import { PolynomialRegression } from "ml-regression-polynomial";
+import { format } from "mathjs";
 import { compileExpression, evaluateExpression } from "./expressions";
 import { toCanvasPoint, toMathPoint, MAX_COORDINATE_POINTS } from "./coordinates";
 import { createShape, MAX_COORDINATE, MAX_NAME_LENGTH } from "../core/model";
@@ -15,6 +16,86 @@ const SAMPLE_COUNT = 1000;
 const MAX_SAMPLE_JUMP = 800;
 // 函数取值范围保留在文件尺寸上限内，单位为画布坐标
 const MAX_PLOT_POSITION = MAX_COORDINATE / 2;
+// 曲线旁显示系数的有效数字，不改变计算和保存使用的精度
+const LABEL_PRECISION = 6;
+// 省略拟合中的微小舍入误差，相对于最大系数
+const LABEL_ZERO_RATIO = 0.00000001;
+// 曲线说明优先靠近的数学横坐标
+const LABEL_POSITION_X = 1;
+
+/** 生成人能直接阅读的解析式，计算仍使用未舍入的原始系数 */
+export function getFunctionLabel(shape: Shape): string {
+  const formula = shape.formula;
+  if (formula === undefined) {
+    return shape.text;
+  }
+  if (formula.coefficients.length === 0) {
+    const expression = formula.expression.trim();
+    const body = expression.replace(/^y\s*=/i, "");
+    return "y = " + body.trim();
+  }
+  let maximum = 0;
+  for (const coefficient of formula.coefficients) {
+    maximum = Math.max(maximum, Math.abs(coefficient));
+  }
+  let expression = "";
+  for (let power = formula.coefficients.length - 1; power >= 0; power = power - 1) {
+    const coefficient = formula.coefficients[power];
+    if (Math.abs(coefficient) <= maximum * LABEL_ZERO_RATIO) {
+      continue;
+    }
+    let term = format(Math.abs(coefficient), { precision: LABEL_PRECISION });
+    if (power > 0) {
+      if (term === "1") {
+        term = "";
+      }
+      term = term + "x";
+      if (power > 1) {
+        term = term + "^" + power;
+      }
+    }
+    let sign = " + ";
+    if (coefficient < 0) {
+      sign = " - ";
+    }
+    if (expression === "") {
+      sign = "";
+      if (coefficient < 0) {
+        sign = "-";
+      }
+    }
+    expression = expression + sign + term;
+  }
+  if (expression === "") {
+    expression = "0";
+  }
+  return "y = " + expression;
+}
+
+/** 说明文字靠近曲线上的一个有效点，平移缩放不会改变锚点 */
+export function functionLabelAnchor(shape: Shape): Point {
+  const formula = shape.formula;
+  if (formula !== undefined) {
+    const compiled = compileExpression(formula.expression);
+    const preferred = Math.max(formula.minimum, Math.min(formula.maximum, LABEL_POSITION_X));
+    const positions = [
+      preferred,
+      (formula.minimum + formula.maximum) / 2,
+      formula.minimum,
+      formula.maximum
+    ];
+    for (const horizontal of positions) {
+      const vertical = evaluateExpression(compiled, horizontal);
+      if (vertical !== null) {
+        const point = toCanvasPoint({ x: horizontal, y: vertical });
+        if (Math.abs(point.y) <= MAX_PLOT_POSITION) {
+          return point;
+        }
+      }
+    }
+  }
+  return { x: shape.x, y: shape.y };
+}
 
 /** 将多项式系数转换为 mathjs 可读的解析式 */
 function polynomialExpression(coefficients: number[]): string {

@@ -5,6 +5,8 @@ import { parseDocument } from "../../src/storage/document";
 import type { BoardDocument, Point } from "../../src/core/types";
 import { COORDINATE_UNIT, toCanvasPoint } from "../../src/math/coordinates";
 import { createFunctionShape } from "../../src/math/plots";
+import { constructShape } from "../../src/core/commands";
+import { getLinePoints } from "../../src/geometry/geometry";
 
 // 浏览器通道沿用已有测试配置
 const CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
@@ -69,6 +71,49 @@ async function mode(page: Page, group: string, label: string): Promise<void> {
   await page.locator("#tool-menu").getByRole("button", { name: label, exact: true }).click();
 }
 
+/** 立即读取锁标记所在区域，不等待截图或额外的动画帧 */
+function readLockPixels(position: Point): number {
+  const host = window.document.getElementById("canvas-host");
+  const canvas = window.document.querySelector(".lower-canvas");
+  if (host === null || !(canvas instanceof HTMLCanvasElement)) {
+    return 0;
+  }
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    return 0;
+  }
+  const zoom = Number(host.dataset.zoom);
+  const ratio = canvas.width / host.clientWidth;
+  const left = (Number(host.dataset.viewX) + position.x * zoom - 10) * ratio;
+  const top = (Number(host.dataset.viewY) + position.y * zoom - 20) * ratio;
+  const pixels = context.getImageData(left, top, 18 * ratio, 20 * ratio).data;
+  let dark = 0;
+  for (let index = 0; index < pixels.length; index = index + 4) {
+    if (pixels[index] < 140 && pixels[index + 1] < 150 && pixels[index + 2] < 170) {
+      dark = dark + 1;
+    }
+  }
+  return dark;
+}
+
+/** 从实际导出的 SVG 读取可见文字，不把项目元数据当成显示结果 */
+async function readPreviewLabels(): Promise<string[]> {
+  const image = window.document.querySelector("#export-preview img");
+  if (!(image instanceof HTMLImageElement)) {
+    return [];
+  }
+  const response = await fetch(image.src);
+  const text = await response.text();
+  const xml = new DOMParser().parseFromString(text, "image/svg+xml");
+  const labels: string[] = [];
+  for (const element of xml.querySelectorAll("text")) {
+    const content = element.textContent || "";
+    const normalized = content.replace(/\s+/g, " ");
+    labels.push(normalized.trim());
+  }
+  return labels;
+}
+
 /** 坐标批量创建、数学坐标编辑和多对象透明度都写入作品 */
 async function checkCoordinates(page: Page): Promise<void> {
   await open(page);
@@ -76,14 +121,18 @@ async function checkCoordinates(page: Page): Promise<void> {
   await page.getByRole("textbox", { name: "坐标列表" }).fill("0, 0\n2, 3\n-2, 1");
   await page.getByRole("button", { name: "创建", exact: true }).click();
   const created = await saved(page);
-  expect(created.shapes.length).toBe(3);
+  expect(created.shapes.length).toBe(6);
+  expect(created.shapes[0].name).toBe("A");
+  expect(created.shapes[1].name).toBe("B");
+  expect(created.shapes[2].name).toBe("C");
+  expect(created.shapes[3].text).toBe("A");
   expect(created.shapes[1].x).toBe(toCanvasPoint({ x: 2, y: 3 }).x);
   const opacity = page.getByRole("spinbutton", { name: "透明度", exact: true });
   await opacity.fill("0.4");
   await opacity.press("Tab");
   const styled = await saved(page);
-  for (const shape of styled.shapes) {
-    expect(shape.opacity).toBe(0.4);
+  for (let index = 0; index < 3; index = index + 1) {
+    expect(styled.shapes[index].opacity).toBe(0.4);
   }
   await page.locator("#objects-tab").click();
   await page.locator('[data-object-select="' + created.shapes[1].id + '"]').click();
@@ -107,6 +156,9 @@ async function checkFunction(page: Page): Promise<void> {
   await expect(page.locator("#math-dialog")).toBeHidden();
   const created = await saved(page);
   expect(created.shapes[0].kind).toBe("function");
+  await page.getByRole("button", { name: "导出", exact: true }).click();
+  expect(await page.evaluate(readPreviewLabels)).toContain("y = sin(x)");
+  await page.getByRole("button", { name: "关闭导出", exact: true }).click();
   const opacity = page.getByRole("spinbutton", { name: "透明度", exact: true });
   await opacity.fill("0.5");
   await opacity.press("Tab");
@@ -137,8 +189,11 @@ async function checkFit(page: Page): Promise<void> {
   await page.getByRole("spinbutton", { name: "多项式阶数", exact: true }).fill("2");
   await page.getByRole("button", { name: "创建", exact: true }).click();
   const fitted = await saved(page);
-  expect(fitted.shapes.length).toBe(4);
+  expect(fitted.shapes.length).toBe(7);
   expect(fitted.shapes[3].relation.kind).toBe("fit");
+  await page.getByRole("button", { name: "导出", exact: true }).click();
+  expect(await page.evaluate(readPreviewLabels)).toContain("y = x^2");
+  await page.getByRole("button", { name: "关闭导出", exact: true }).click();
   const before = fitted.shapes[3].path;
   await page.locator("#objects-tab").click();
   await page.locator('[data-object-select="' + fitted.shapes[1].id + '"]').click();
@@ -148,6 +203,9 @@ async function checkFit(page: Page): Promise<void> {
   await vertical.press("Tab");
   const changed = await saved(page);
   expect(changed.shapes[3].path).not.toBe(before);
+  await page.getByRole("button", { name: "导出", exact: true }).click();
+  expect(await page.evaluate(readPreviewLabels)).toContain("y = 1");
+  await page.getByRole("button", { name: "关闭导出", exact: true }).click();
   await page.screenshot({ path: "test-results/fitted-function.png" });
 }
 
@@ -287,36 +345,60 @@ async function checkLockPosition(page: Page): Promise<void> {
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.waitForTimeout(550);
-  /** 从锁的预期位置读取深色像素，网格点不足以通过此检查 */
-  function readLock(): number {
-    const host = window.document.getElementById("canvas-host");
-    const canvas = window.document.querySelector(".lower-canvas");
-    if (host === null || !(canvas instanceof HTMLCanvasElement)) {
-      return 0;
-    }
-    const context = canvas.getContext("2d");
-    if (context === null) {
-      return 0;
-    }
-    const zoom = Number(host.dataset.zoom);
-    const ratio = canvas.width / host.clientWidth;
-    const left = (Number(host.dataset.viewX) + 550 * zoom - 10) * ratio;
-    const top = (Number(host.dataset.viewY) + 320 * zoom - 20) * ratio;
-    const pixels = context.getImageData(left, top, 18 * ratio, 20 * ratio).data;
-    let dark = 0;
-    for (let index = 0; index < pixels.length; index = index + 4) {
-      if (pixels[index] < 140 && pixels[index + 1] < 150 && pixels[index + 2] < 170) {
-        dark = dark + 1;
-      }
-    }
-    return dark;
-  }
   for (const offset of [30, 60, 90]) {
     await page.mouse.move(start.x + offset, start.y + offset / 2);
+    expect(await page.evaluate(readLockPixels, { x: 550, y: 420 })).toBeGreaterThan(15);
     await page.screenshot({ path: "test-results/lock-pan-" + offset + ".png" });
-    expect(await page.evaluate(readLock)).toBeGreaterThan(15);
   }
   await page.mouse.up();
+  for (let index = 0; index < 2; index = index + 1) {
+    await page.getByRole("button", { name: "放大画布", exact: true }).click();
+    expect(await page.evaluate(readLockPixels, { x: 550, y: 420 })).toBeGreaterThan(15);
+  }
+}
+
+/** 来源点拖动过程中，锁定构造线的标记随方向点一起移动 */
+async function checkDependentLock(page: Page): Promise<void> {
+  const document = createDocument();
+  const source = createShape("line", { x: 200, y: 200 });
+  source.width = 300;
+  const point = createShape("point", { x: 600, y: 400 });
+  document.shapes.push(source, point);
+  const line = constructShape(document, [source, point], "parallel");
+  const endpoint = getLinePoints(line)[1];
+  await open(page, document);
+  await page.getByRole("button", { name: "自动吸附", exact: true }).click();
+  const start = await screen(page, point);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  for (const distance of [20, 40, 60]) {
+    await page.mouse.move(start.x + distance, start.y + distance);
+    const expected = { x: endpoint.x + distance, y: endpoint.y + distance };
+    expect(await page.evaluate(readLockPixels, expected)).toBeGreaterThan(15);
+  }
+  await page.mouse.up();
+}
+
+/** 坐标轴开启时放置点保留轴上坐标，关闭后再使用网格 */
+async function checkAxisSnap(page: Page): Promise<void> {
+  await open(page);
+  await expect(page.locator('[data-geometry-icon="intersection"] path')).toHaveAttribute(
+    "d",
+    "M3 6l18 12M6 21L18 3"
+  );
+  await page.getByRole("button", { name: "几何点", exact: true }).click();
+  let position = await screen(page, { x: 604, y: 313 });
+  await page.mouse.click(position.x, position.y);
+  const first = await saved(page);
+  expect(first.shapes[0].x).toBe(600);
+  expect(first.shapes[0].y).toBeCloseTo(313, 4);
+  expect(first.shapes[0].name).toBe("A");
+  await page.getByRole("button", { name: "显示坐标轴", exact: true }).click();
+  position = await screen(page, { x: 604, y: 227 });
+  await page.mouse.click(position.x, position.y);
+  const next = await saved(page);
+  expect(next.shapes[2].y).toBe(220);
+  expect(next.shapes[2].name).toBe("B");
 }
 
 /** 执行批量坐标相关操作 */
@@ -347,6 +429,14 @@ async function testPointSnap(): Promise<void> {
 async function testLockPosition(): Promise<void> {
   await run(checkLockPosition);
 }
+/** 执行来源点拖动时的锁标记同步检查 */
+async function testDependentLock(): Promise<void> {
+  await run(checkDependentLock);
+}
+/** 执行坐标轴吸附与交点图标检查 */
+async function testAxisSnap(): Promise<void> {
+  await run(checkAxisSnap);
+}
 
 test("批量坐标点与透明度属性", testCoordinates);
 test("函数绘制属性与快捷键隐藏", testFunction);
@@ -355,3 +445,5 @@ test("射线直线与真实比例尺", testLinesAndScale);
 test("空白直接平移与对象绘图长按平移", testPanning);
 test("几何点放置拖动优先吸附曲线边框", testPointSnap);
 test("锁标记平移时保持固定几何位置", testLockPosition);
+test("锁标记随来源点拖动立即更新", testDependentLock);
+test("坐标轴吸附与连续点名及交点图标", testAxisSnap);

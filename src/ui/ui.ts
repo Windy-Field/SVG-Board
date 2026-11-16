@@ -265,6 +265,12 @@ export function mountInterface(): void {
       construction.label,
       construction.icon
     );
+    if (construction.action === "intersection") {
+      button = button.replace(
+        icon(construction.icon),
+        '<svg class="lucide" data-geometry-icon="intersection" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 6l18 12M6 21L18 3"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>'
+      );
+    }
     if (construction.action === "midpoint") {
       button = button.replace(
         icon(construction.icon),

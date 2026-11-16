@@ -2,6 +2,7 @@ import { getDeletionIds, updateRelations } from "../geometry/geometry";
 import { compareLayers } from "./model";
 import { createShape, getBounds, isDependent, MAX_SHAPES, moveShape, resizeShape } from "./model";
 import type { BoardDocument, RelationKind, Shape } from "./types";
+import { nextPointName } from "../objects/point-labels";
 
 // 粘贴副本相对原对象的偏移，单位为画布坐标
 const PASTE_OFFSET = 24;
@@ -170,13 +171,13 @@ export function constructShape(
   } else if (kind === "midpoint" && lines.length === 1 && selected.length === 1) {
     shape = createShape("point", { x: 0, y: 0 });
     sources.push(lines[0].id);
-    shape.name = "中点";
-    shape.text = "M";
+    shape.name = nextPointName(document);
+    shape.text = shape.name;
   } else if (kind === "intersection" && lines.length === 2 && selected.length === 2) {
     shape = createShape("point", { x: 0, y: 0 });
     sources.push(lines[0].id, lines[1].id);
-    shape.name = "交点";
-    shape.text = "I";
+    shape.name = nextPointName(document);
+    shape.text = shape.name;
   } else if (kind === "bisector" && lines.length === 2 && selected.length === 2) {
     sources.push(lines[0].id, lines[1].id);
     shape.name = "角平分线";

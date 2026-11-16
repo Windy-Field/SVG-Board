@@ -3,6 +3,7 @@ import { getLinePoints } from "./geometry";
 import { GRID_SIZE, isLine, getRotatedBounds } from "../core/model";
 import { outlinePoints } from "./outlines";
 import type { BoardDocument, Point } from "../core/types";
+import { ORIGIN_X, ORIGIN_Y } from "../math/coordinates";
 
 // 光标吸附范围，单位为屏幕像素
 const SNAP_DISTANCE = 10;
@@ -11,6 +12,22 @@ const SNAP_DISTANCE = 10;
 interface Edge {
   owner: string;
   segment: Flatten.Segment;
+}
+
+/** 复用线段投影计算，图形边框和坐标轴使用同一吸附范围 */
+function addEdge(
+  pointer: Flatten.Point,
+  segment: Flatten.Segment,
+  owner: string,
+  radius: number,
+  edges: Edge[],
+  projections: Point[]
+): void {
+  const distance = pointer.distanceTo(segment);
+  if (distance[0] <= radius) {
+    projections.push({ x: distance[1].end.x, y: distance[1].end.y });
+    edges.push({ owner: owner, segment: segment });
+  }
 }
 
 /** 返回范围内最近的候选点，吸附到对象后保留其准确坐标 */
@@ -33,7 +50,8 @@ export function snapPosition(
   position: Point,
   enabled: boolean,
   zoom: number,
-  excluded: string
+  excluded: string,
+  showAxes: boolean = false
 ): Point {
   if (!enabled) {
     return { x: position.x, y: position.y };
@@ -43,8 +61,24 @@ export function snapPosition(
   const edges: Edge[] = [];
   const vertices: Point[] = [];
   const projections: Point[] = [];
+  if (showAxes) {
+    const horizontal = new Flatten.Segment(
+      new Flatten.Point(position.x - radius * 2, ORIGIN_Y),
+      new Flatten.Point(position.x + radius * 2, ORIGIN_Y)
+    );
+    const vertical = new Flatten.Segment(
+      new Flatten.Point(ORIGIN_X, position.y - radius * 2),
+      new Flatten.Point(ORIGIN_X, position.y + radius * 2)
+    );
+    addEdge(pointer, horizontal, "axis-horizontal", radius, edges, projections);
+    addEdge(pointer, vertical, "axis-vertical", radius, edges, projections);
+    vertices.push({ x: ORIGIN_X, y: ORIGIN_Y });
+  }
   for (const shape of document.shapes) {
     if (shape.id === excluded || shape.hidden) {
+      continue;
+    }
+    if (shape.relation.kind === "label" && shape.relation.sources[0] === excluded) {
       continue;
     }
     const bounds = getRotatedBounds(shape);
@@ -96,11 +130,7 @@ export function snapPosition(
         new Flatten.Point(start.x, start.y),
         new Flatten.Point(end.x, end.y)
       );
-      const distance = pointer.distanceTo(segment);
-      if (distance[0] <= radius) {
-        projections.push({ x: distance[1].end.x, y: distance[1].end.y });
-        edges.push({ owner: shape.id, segment: segment });
-      }
+      addEdge(pointer, segment, shape.id, radius, edges, projections);
     }
   }
   const intersections: Point[] = [];

@@ -3,6 +3,7 @@ import type { FabricObject } from "fabric";
 import { getBounds } from "../core/model";
 import type { Bounds, Shape } from "../core/types";
 import { extendedLinePoints } from "../geometry/extended-lines";
+import { functionLabelAnchor, getFunctionLabel } from "../math/plots";
 import { curvePath, regularPoints } from "../objects/shapes";
 
 // 控制点大小，单位为屏幕像素
@@ -23,6 +24,12 @@ const LABEL_MIN_WIDTH = 100;
 const LABEL_HORIZONTAL_PADDING = 16;
 // 线条标签向上偏移的距离
 const LINE_LABEL_OFFSET = 16;
+// 函数说明的最大宽度，单位为画布坐标，较长的式子自动换行
+const FUNCTION_LABEL_WIDTH = 520;
+// 函数说明与曲线锚点之间的水平距离，单位为画布坐标
+const FUNCTION_LABEL_GAP = 12;
+// 估计文字宽度时，一个字符相对字号的平均宽度
+const LABEL_CHARACTER_RATIO = 0.65;
 
 /** 根据作品创建库中的几何对象，控制点与变换交给 Fabric */
 export function createFabricShape(shape: Shape, clip?: Bounds): FabricObject {
@@ -261,9 +268,13 @@ function getTextAlign(anchor: string): "left" | "center" | "right" {
   return "center";
 }
 
-/** 按图形位置创建标签，选中后可转为独立文本框 */
+/** 按图形位置创建标签，函数解析式直接取自计算结果 */
 export function createFabricLabel(shape: Shape): Textbox | null {
-  if (shape.text === "" || shape.kind === "text") {
+  let text = shape.text;
+  if (shape.kind === "function") {
+    text = getFunctionLabel(shape);
+  }
+  if (text === "" || shape.kind === "text") {
     return null;
   }
   const bounds = getBounds(shape);
@@ -278,7 +289,16 @@ export function createFabricLabel(shape: Shape): Textbox | null {
   if (shape.kind === "line" || shape.kind === "arrow" || shape.kind === "connector") {
     top = top - LINE_LABEL_OFFSET;
   }
-  return new Textbox(shape.text, {
+  if (shape.kind === "function") {
+    const anchor = functionLabelAnchor(shape);
+    width = Math.min(
+      FUNCTION_LABEL_WIDTH,
+      Math.max(LABEL_MIN_WIDTH, text.length * shape.fontSize * LABEL_CHARACTER_RATIO)
+    );
+    left = anchor.x + FUNCTION_LABEL_GAP + width / 2;
+    top = anchor.y - LINE_LABEL_OFFSET - shape.fontSize / 2;
+  }
+  return new Textbox(text, {
     left: left,
     top: top,
     width: width,
