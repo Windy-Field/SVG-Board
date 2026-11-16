@@ -1,10 +1,10 @@
 {
   "name": "svg-board",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "tsx scripts/dev.ts",
     "typecheck": "tsc --noEmit",
     "lint": "node scripts/check-style.mjs",
     "format": "prettier --write src scripts tests *.ts *.json *.css *.html README.md",

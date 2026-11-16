@@ -1,12 +1,28 @@
-import { MAX_PATH_LENGTH, MAX_SHAPES } from "./model";
+import {
+  MAX_PATH_LENGTH,
+  MAX_SHAPES,
+  MAX_COORDINATE,
+  MIN_BOARD_SIZE,
+  MAX_BOARD_SIZE
+} from "./model";
 import type { BoardDocument, Relation, Shape, ShapeKind } from "./types";
 import { isFont } from "./fonts";
-import { createDocument } from "./model";
+import { createDocument, DEFAULT_BACKGROUND } from "./model";
 import { convertPointLabels } from "./point-labels";
+import { MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_POINT_RADIUS, DEFAULT_POLYGON_SIDES } from "./model";
+import {
+  MAX_POINT_RADIUS,
+  MAX_CORNER_RADIUS,
+  MIN_POLYGON_SIDES,
+  MAX_POLYGON_POINTS,
+  MAX_BEND_RATIO
+} from "./model";
 
+// 项目文件大小上限，单位为字节
 export const MAX_FILE_BYTES = 8 * 1024 * 1024;
+// 浏览器自动恢复作品的存储键
 export const STORAGE_KEY = "svg-board-document-v1";
-const MAX_COORDINATE = 100000;
+// 单个文字对象最多保存的字符数
 const MAX_TEXT_LENGTH = 10000;
 
 /** 判断未知输入是否为普通对象，方便安全读取文件内容 */
@@ -109,7 +125,7 @@ function readShape(value: unknown): Shape {
   const relation: Relation = { kind: relationKind, sources: sources };
   const points = [];
   if (value.points !== undefined) {
-    if (!Array.isArray(value.points) || value.points.length > 1000) {
+    if (!Array.isArray(value.points) || value.points.length > MAX_POLYGON_POINTS) {
       throw new Error("多边形顶点过多");
     }
     for (const point of value.points) {
@@ -134,8 +150,8 @@ function readShape(value: unknown): Shape {
     y: readNumber(value.y, -MAX_COORDINATE, MAX_COORDINATE),
     width: readNumber(value.width, -MAX_COORDINATE, MAX_COORDINATE),
     height: readNumber(value.height, -MAX_COORDINATE, MAX_COORDINATE),
-    cornerRadius: optionalNumber(value.cornerRadius, 0, 0, 50000),
-    pointRadius: optionalNumber(value.pointRadius, 5, 1, 5000),
+    cornerRadius: optionalNumber(value.cornerRadius, 0, 0, MAX_CORNER_RADIUS),
+    pointRadius: optionalNumber(value.pointRadius, DEFAULT_POINT_RADIUS, 1, MAX_POINT_RADIUS),
     rotation: readNumber(value.rotation, -36000, 36000),
     stroke: readColor(value.stroke),
     fill: readColor(value.fill),
@@ -143,7 +159,7 @@ function readShape(value: unknown): Shape {
     opacity: readNumber(value.opacity, 0, 1),
     dash: readBoolean(value.dash),
     text: readString(value.text, MAX_TEXT_LENGTH),
-    fontSize: readNumber(value.fontSize, 8, 200),
+    fontSize: readNumber(value.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE),
     fontFamily: fontFamily,
     textAlign: textAlign,
     textDirection: readTextDirection(value.textDirection),
@@ -151,8 +167,13 @@ function readShape(value: unknown): Shape {
     italic: optionalBoolean(value.italic),
     underline: optionalBoolean(value.underline),
     points: points,
-    sides: optionalNumber(value.sides, 5, 3, 1000),
-    bend: optionalNumber(value.bend, 0.5, -10, 10),
+    sides: optionalNumber(
+      value.sides,
+      DEFAULT_POLYGON_SIDES,
+      MIN_POLYGON_SIDES,
+      MAX_POLYGON_POINTS
+    ),
+    bend: optionalNumber(value.bend, 0.5, -MAX_BEND_RATIO, MAX_BEND_RATIO),
     locked: readBoolean(value.locked),
     hidden: readBoolean(value.hidden),
     auxiliary: readBoolean(value.auxiliary),
@@ -302,11 +323,19 @@ export function parseDocument(text: string): BoardDocument {
     format: "svg-board",
     version: 1,
     name: readString(value.name, 100),
-    width: readNumber(value.width, 100, 10000),
-    height: readNumber(value.height, 100, 10000),
+    width: readNumber(value.width, MIN_BOARD_SIZE, MAX_BOARD_SIZE),
+    height: readNumber(value.height, MIN_BOARD_SIZE, MAX_BOARD_SIZE),
     shapes: shapes,
-    description: createDocument().description
+    description: createDocument().description,
+    background: DEFAULT_BACKGROUND
   };
+  if (value.background !== undefined) {
+    const background = readColor(value.background);
+    if (background === "none") {
+      throw new Error("请选择画布颜色");
+    }
+    document.background = background;
+  }
   if (value.description !== undefined) {
     document.description = readString(value.description, 100000);
   }

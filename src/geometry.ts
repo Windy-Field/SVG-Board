@@ -2,7 +2,9 @@ import Flatten from "@flatten-js/core";
 import { findShape, getBounds } from "./model";
 import type { BoardDocument, Point, Shape } from "./types";
 
+// 小于此长度时按退化几何处理，单位为画布坐标
 const MIN_LENGTH = 0.000001;
+// 新建平行线和垂线的显示长度
 const CONSTRUCTION_LENGTH = 240;
 
 /** 返回对象中心，供连接线计算朝向使用 */

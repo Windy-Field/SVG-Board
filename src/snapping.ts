@@ -4,6 +4,7 @@ import { GRID_SIZE, isLine, getRotatedBounds } from "./model";
 import { outlinePoints } from "./outlines";
 import type { BoardDocument, Point } from "./types";
 
+// 光标吸附范围，单位为屏幕像素
 const SNAP_DISTANCE = 10;
 
 /** 保存光标附近的一段边框，交点只在附近计算 */

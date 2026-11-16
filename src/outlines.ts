@@ -5,9 +5,14 @@ import { createFabricShape } from "./fabric-shapes";
 import { regularPoints } from "./shapes";
 import type { Point, Shape } from "./types";
 
+// 椭圆边框采样点数，影响吸附精度
 const ELLIPSE_STEPS = 96;
+// 曲线路径采样间距，单位为画布坐标
 const CURVE_STEP = 6;
+// 单条曲线的采样数上限
 const MAX_CURVE_STEPS = 256;
+// 每个矩形圆角的采样段数
+const CORNER_STEPS = 12;
 
 /** 给圆角矩形的四个角依次取点，直边由相邻角的端点连接 */
 function roundedRectangle(width: number, height: number, radius: number): Point[] {
@@ -19,8 +24,8 @@ function roundedRectangle(width: number, height: number, radius: number): Point[
   ];
   const points: Point[] = [];
   for (let corner = 0; corner < centers.length; corner = corner + 1) {
-    for (let step = 0; step <= 12; step = step + 1) {
-      const angle = ((corner - 1) * Math.PI) / 2 + (step * Math.PI) / 24;
+    for (let step = 0; step <= CORNER_STEPS; step = step + 1) {
+      const angle = ((corner - 1) * Math.PI) / 2 + (step * Math.PI) / (CORNER_STEPS * 2);
       points.push({
         x: centers[corner].x + radius * Math.cos(angle),
         y: centers[corner].y + radius * Math.sin(angle)

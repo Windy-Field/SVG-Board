@@ -5,7 +5,9 @@ import { parseDocument } from "../../src/document";
 import { createFlowTemplate } from "../../src/templates";
 import type { BoardDocument, Point } from "../../src/types";
 
+// 浏览器通道由运行环境指定，Windows 可使用 msedge
 const CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
+// 显式开启后更新 README 截图，普通测试只写入测试输出目录
 const UPDATE_SCREENSHOTS = process.env.UPDATE_SCREENSHOTS === "true";
 
 /** 使用独立浏览器运行一次工作台操作，页面异常同样视为失败 */
@@ -295,7 +297,7 @@ async function checkArchives(page: Page): Promise<void> {
   const document = createDocument();
   document.name = "第一份";
   await openBoard(page, document);
-  await page.getByRole("button", { name: "新建存档", exact: true }).click();
+  await page.getByRole("button", { name: "新建画板", exact: true }).click();
   await expect(page.locator("#archive-select option")).toHaveCount(4);
   const name = page.getByRole("textbox", { name: "作品名称", exact: true });
   await name.fill("第二份");
@@ -384,7 +386,8 @@ async function checkTextAndDescription(page: Page): Promise<void> {
   const center = await screen(page, { x: -150, y: -85 });
   await page.mouse.click(center.x, center.y);
   await expect(page.getByRole("toolbar", { name: "文字配置" })).toBeVisible();
-  await page.getByRole("combobox", { name: "浮动字体", exact: true }).selectOption("KaiTi");
+  await page.getByRole("button", { name: "字体", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "楷体", exact: true }).click();
   const size = page.getByRole("spinbutton", { name: "浮动字号", exact: true });
   await size.fill("32");
   await size.press("Tab");
@@ -446,8 +449,8 @@ async function checkArchiveDuplicates(page: Page): Promise<void> {
   await openBoard(page, createDocument());
   await expect(page.locator("#archive-select option")).toHaveCount(3);
   await expect(page.getByRole("heading", { name: "参考示例", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "新建存档", exact: true }).click();
-  await page.getByRole("button", { name: "新建存档", exact: true }).click();
+  await page.getByRole("button", { name: "新建画板", exact: true }).click();
+  await page.getByRole("button", { name: "新建画板", exact: true }).click();
   await expect(page.locator("#archive-select option")).toHaveCount(3);
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg\+xml,/);
   const statusBox = await page.locator("#save-status").boundingBox();
@@ -635,7 +638,11 @@ async function checkHeaderAndExport(page: Page): Promise<void> {
   await openBoard(page, createDocument());
   await expect(page.locator(".topbar #archive-select")).toBeVisible();
   await expect(page.locator("#inspector #archive-select")).toHaveCount(0);
-  const ids = ["archive-select", "readonly-button", "snap-button"];
+  const ids = ["archive-select", "readonly-button", "snap-button", "grid-button"];
+  await expect(page.locator(".commandbar")).toHaveCount(0);
+  await expect(page.locator('.header-workspace [data-action="undo"]')).toBeVisible();
+  await expect(page.locator('.header-workspace [data-action="redo"]')).toBeVisible();
+  await expect(page.locator('[data-action="new-archive"]')).toHaveCount(0);
   let previous = 0;
   for (const id of ids) {
     const box = await page.locator("#" + id).boundingBox();
@@ -762,6 +769,139 @@ async function checkObjectManagement(page: Page): Promise<void> {
   await expect(page.locator('[data-visibility="' + first.id + '"]')).toBeDisabled();
 }
 
+/** 图形与线条文字可独立选择移动，原图形的尺寸和位置保持原样 */
+async function checkShapeLabels(page: Page): Promise<void> {
+  const document = createDocument();
+  const rectangle = createShape("rect", { x: 200, y: 200 });
+  rectangle.width = 220;
+  rectangle.height = 100;
+  rectangle.text = "模块文字";
+  const line = createShape("line", { x: 200, y: 450 });
+  line.width = 300;
+  line.text = "连接文字";
+  document.shapes.push(rectangle, line);
+  await openBoard(page, document);
+  const label = await screen(page, { x: 310, y: 250 });
+  await drag(page, label, { x: label.x + 60, y: label.y - 30 });
+  const moved = await saved(page);
+  expect(moved.shapes.length).toBe(3);
+  expect(moved.shapes[0].x).toBe(200);
+  expect(moved.shapes[0].text).toBe("");
+  expect(moved.shapes[2].text).toBe("模块文字");
+  expect(moved.shapes[2].x).toBeGreaterThan(260);
+  const lineLabel = await screen(page, { x: 350, y: 434 });
+  await page.mouse.click(lineLabel.x, lineLabel.y);
+  await expect(page.getByRole("toolbar", { name: "文字配置" })).toBeVisible();
+  await page.getByRole("button", { name: "编辑文字", exact: true }).click();
+  await page.locator("#text-value").fill("改后的连接文字");
+  await page.getByRole("button", { name: "保存文字", exact: true }).click();
+  const edited = await saved(page);
+  expect(edited.shapes[1].text).toBe("");
+  expect(edited.shapes[3].text).toBe("改后的连接文字");
+  await page.reload();
+  await expect(page.locator("#object-count")).toHaveText("4 个对象");
+}
+
+/** 画布颜色随作品保存，导出仍透明，预览在桌面和手机均不溢出 */
+async function checkBackgroundAndPreview(page: Page): Promise<void> {
+  const document = createDocument();
+  const shape = createShape("rect", { x: 200, y: 100 });
+  shape.width = 100;
+  shape.height = 700;
+  document.shapes.push(shape);
+  await openBoard(page, document);
+  const input = page.locator('[data-property="background"]');
+  await expect(input).toHaveValue("#ffffff");
+  await input.fill("#e2f3e8");
+  await input.dispatchEvent("change");
+  const savedColor = await saved(page);
+  expect(savedColor.background).toBe("#e2f3e8");
+  await page.reload();
+  await expect(input).toHaveValue("#e2f3e8");
+  for (const width of [1280, 375, 320]) {
+    await page.setViewportSize({ width: width, height: 800 });
+    await page.getByRole("button", { name: "导出", exact: true }).click();
+    const image = page.getByRole("img", { name: "导出预览" });
+    await expect(image).toBeVisible();
+    await page.waitForTimeout(220);
+    const frame = await page.locator("#export-preview").boundingBox();
+    const picture = await image.boundingBox();
+    if (frame === null || picture === null) {
+      throw new Error("导出预览未显示");
+    }
+    expect(picture.x).toBeGreaterThanOrEqual(frame.x - 1);
+    expect(picture.y).toBeGreaterThanOrEqual(frame.y - 1);
+    expect(picture.x + picture.width).toBeLessThanOrEqual(frame.x + frame.width + 1);
+    expect(picture.y + picture.height).toBeLessThanOrEqual(frame.y + frame.height + 1);
+    await page.screenshot({ path: "test-results/export-preview-" + width + ".png" });
+    await page.getByRole("button", { name: "关闭导出", exact: true }).click();
+  }
+}
+
+/** 文字配置独立使用字体菜单与对齐图标，各尺寸下控件均位于工具栏内 */
+async function checkTextToolbarLayout(page: Page): Promise<void> {
+  const document = createDocument();
+  const shape = createShape("text", { x: 250, y: 250 });
+  shape.width = 200;
+  shape.text = "文字配置";
+  document.shapes.push(shape);
+  await openBoard(page, document);
+  for (const width of [1280, 375, 320]) {
+    await page.setViewportSize({ width: width, height: 800 });
+    if (
+      width <= 720 &&
+      (await page.locator("#inspector-button").getAttribute("aria-pressed")) === "true"
+    ) {
+      await page.locator("#inspector-button").click();
+      await page.waitForTimeout(240);
+    }
+    await page.getByRole("button", { name: "适应画布", exact: true }).click();
+    const position = await screen(page, { x: 350, y: 260 });
+    await page.mouse.click(position.x, position.y);
+    if (
+      width <= 720 &&
+      (await page.locator("#inspector-button").getAttribute("aria-pressed")) === "true"
+    ) {
+      await page.locator("#inspector-button").click();
+      await page.waitForTimeout(240);
+    }
+    const toolbar = page.locator("#text-toolbar");
+    await expect(toolbar).toBeVisible();
+    await expect(toolbar.locator("select")).toHaveCount(0);
+    const box = await toolbar.boundingBox();
+    if (box === null) {
+      throw new Error("文字工具栏未显示");
+    }
+    for (const control of await toolbar.locator('button, input:not([type="hidden"])').all()) {
+      const bounds = await control.boundingBox();
+      if (bounds === null) {
+        throw new Error("文字配置控件未显示");
+      }
+      expect(bounds.x).toBeGreaterThanOrEqual(box.x);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(box.x + box.width);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(box.y + box.height);
+    }
+    await page.getByRole("button", { name: "文字左对齐", exact: true }).click();
+    await expect(page.getByRole("button", { name: "文字左对齐", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await page.getByRole("button", { name: "字体", exact: true }).click();
+    await expect(page.getByRole("menu", { name: "字体列表" })).toBeVisible();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#font-menu-label")).toHaveText("微软雅黑");
+    await page.getByRole("button", { name: "字体", exact: true }).click();
+    await page.screenshot({ path: "test-results/text-toolbar-menu-" + width + ".png" });
+    await page.keyboard.press("Escape");
+    await page.screenshot({ path: "test-results/text-toolbar-" + width + ".png" });
+    if (UPDATE_SCREENSHOTS && width === 1280) {
+      await toolbar.screenshot({ path: "docs/images/text-toolbar.png" });
+    }
+  }
+}
+
 /** 检查工具布局与竖排文本 */
 async function testToolbar(): Promise<void> {
   await runBrowser(checkToolbar);
@@ -853,6 +993,21 @@ async function testObjectManagement(): Promise<void> {
   await runBrowser(checkObjectManagement);
 }
 
+/** 检查图形与线条标签独立编辑 */
+async function testShapeLabels(): Promise<void> {
+  await runBrowser(checkShapeLabels);
+}
+
+/** 检查画布颜色与受限预览尺寸 */
+async function testBackgroundAndPreview(): Promise<void> {
+  await runBrowser(checkBackgroundAndPreview);
+}
+
+/** 检查文字配置栏布局与菜单键盘操作 */
+async function testTextToolbarLayout(): Promise<void> {
+  await runBrowser(checkTextToolbarLayout);
+}
+
 test("工具图标对齐与纵向文本编辑", testToolbar);
 test("参考线可拖动且箭头端点吸附网格", testLines);
 test("Ctrl 多选取消与右键框选", testSelection);
@@ -872,3 +1027,6 @@ test("点击放置线圆与两点线段", testClickPlacement);
 test("标题栏存档与保存透明导出", testHeaderAndExport);
 test("右键框选笔画与已有多选", testMarqueeEdges);
 test("对象管理隐藏仅作用目标并显示锁定", testObjectManagement);
+test("图形与线条标签可单独移动编辑", testShapeLabels);
+test("画布颜色保存与导出预览无溢出", testBackgroundAndPreview);
+test("文字配置栏独立菜单与响应式布局", testTextToolbarLayout);

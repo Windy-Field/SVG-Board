@@ -4,6 +4,7 @@ import { parseDocument } from "../../src/document";
 import type { Point } from "../../src/types";
 import { readFileSync } from "node:fs";
 
+// 测试浏览器通道由运行环境指定
 const BROWSER_CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
 
 /** 从项目配置读取期望版本，避免测试和页面各自维护版本号 */
@@ -119,7 +120,7 @@ async function runResponsiveTest(page: Page): Promise<void> {
       const tools = document.querySelector(".tools");
       return tools instanceof HTMLElement && tools.scrollHeight <= tools.clientHeight;
     }
-    expect(await page.evaluate(toolbarFits)).toBe(true);
+    expect(await page.evaluate(toolbarFits), "工具栏需完整显示，宽度 " + width).toBe(true);
     /** 检查画布中存在深色图形像素，不能仅凭 canvas 元素存在认定图形已显示 */
     function hasDrawing(): boolean {
       const canvas = document.querySelector(".lower-canvas");
@@ -193,7 +194,7 @@ async function runRelationshipTest(page: Page): Promise<void> {
   await page.locator("#archive-select").selectOption({ label: "课程作业 · 提交流程" });
   await page.getByRole("button", { name: "适应画布", exact: true }).click();
   await page.getByRole("button", { name: "自动吸附", exact: true }).click();
-  const position = await boardPosition(page, { x: 460, y: 262 });
+  const position = await boardPosition(page, { x: 380, y: 238 });
   await page.mouse.move(position.x, position.y);
   await page.mouse.down();
   await page.mouse.move(position.x, position.y + 70, { steps: 10 });

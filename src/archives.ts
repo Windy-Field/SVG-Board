@@ -4,9 +4,13 @@ import type { BoardDocument } from "./types";
 import { archiveContent } from "./archive-content";
 import { createFlowTemplate, createGeometryTemplate } from "./templates";
 
+// 存档列表在浏览器中的存储键
 const ARCHIVE_KEY = "svg-board-archives-v1";
+// 当前存档编号的存储键
 const ACTIVE_KEY = "svg-board-active-archive";
+// 浏览器中最多保留的存档数
 const ARCHIVE_LIMIT = 40;
+// 内置存档的首次写入标记
 const SEEDED_KEY = "svg-board-builtin-archives-v1";
 
 /** 一个本地存档有独立编号，重命名作品不会改变存档身份 */
@@ -68,7 +72,7 @@ export class Archives {
       }
     }
     if (this.items.length >= ARCHIVE_LIMIT) {
-      throw new Error("最多保留 40 个存档");
+      throw new Error("最多保留 " + ARCHIVE_LIMIT + " 个存档");
     }
     const item = { id: crypto.randomUUID(), document: structuredClone(document) };
     this.items.push(item);

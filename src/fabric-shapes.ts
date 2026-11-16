@@ -4,6 +4,25 @@ import { getBounds } from "./model";
 import type { Shape } from "./types";
 import { curvePath, regularPoints } from "./shapes";
 
+// 控制点大小，单位为屏幕像素
+const HANDLE_SIZE = 10;
+// 选区与文字外侧的交互留白
+const OBJECT_PADDING = 4;
+// 选区边框和控制点描边颜色
+const SELECTION_COLOR = "#2563eb";
+// 箭头两翼的最小长度
+const ARROW_HEAD_SIZE = 20;
+// 箭头两翼长度相对线宽的倍率
+const ARROW_HEAD_STROKE_RATIO = 5;
+// 箭头两翼与线身的夹角，单位为弧度
+const ARROW_HEAD_ANGLE = Math.PI / 6;
+// 图形标签文本框的最小宽度
+const LABEL_MIN_WIDTH = 100;
+// 图形标签左右预留的总宽度
+const LABEL_HORIZONTAL_PADDING = 16;
+// 线条标签向上偏移的距离
+const LINE_LABEL_OFFSET = 16;
+
 /** 根据作品创建库中的几何对象，控制点与变换交给 Fabric */
 export function createFabricShape(shape: Shape): FabricObject {
   const bounds = getBounds(shape);
@@ -52,7 +71,8 @@ export function createFabricShape(shape: Shape): FabricObject {
   } else if (shape.kind === "text") {
     let displayText = shape.text;
     if (shape.textDirection === "vertical") {
-      displayText = Array.from(shape.text).join("\n");
+      const characters = Array.from(shape.text);
+      displayText = characters.join("\n");
     }
     object = new Textbox(displayText, {
       width: width,
@@ -64,7 +84,7 @@ export function createFabricShape(shape: Shape): FabricObject {
       textAlign: getTextAlign(shape.textAlign),
       fill: shape.stroke,
       splitByGrapheme: true,
-      padding: 4
+      padding: OBJECT_PADDING
     });
     object.set({ minWidth: 12 });
     // 使用字体的自然高度，不把一行标题强行拉伸成预设文本框高度
@@ -104,12 +124,12 @@ export function createFabricShape(shape: Shape): FabricObject {
     opacity: shape.opacity,
     strokeUniform: true,
     cornerStyle: "circle",
-    cornerSize: 10,
+    cornerSize: HANDLE_SIZE,
     cornerColor: "#ffffff",
-    cornerStrokeColor: "#2563eb",
-    borderColor: "#2563eb",
+    cornerStrokeColor: SELECTION_COLOR,
+    borderColor: SELECTION_COLOR,
     transparentCorners: false,
-    padding: 4,
+    padding: OBJECT_PADDING,
     objectCaching: false,
     lockScalingFlip: true
   });
@@ -193,11 +213,11 @@ function createArrow(shape: Shape): Path {
       angle = -Math.PI / 2;
     }
   }
-  const headSize = Math.max(20, shape.strokeWidth * 5);
-  const firstX = endX - headSize * Math.cos(angle - Math.PI / 6);
-  const firstY = endY - headSize * Math.sin(angle - Math.PI / 6);
-  const secondX = endX - headSize * Math.cos(angle + Math.PI / 6);
-  const secondY = endY - headSize * Math.sin(angle + Math.PI / 6);
+  const headSize = Math.max(ARROW_HEAD_SIZE, shape.strokeWidth * ARROW_HEAD_STROKE_RATIO);
+  const firstX = endX - headSize * Math.cos(angle - ARROW_HEAD_ANGLE);
+  const firstY = endY - headSize * Math.sin(angle - ARROW_HEAD_ANGLE);
+  const secondX = endX - headSize * Math.cos(angle + ARROW_HEAD_ANGLE);
+  const secondY = endY - headSize * Math.sin(angle + ARROW_HEAD_ANGLE);
   path =
     path +
     " M " +
@@ -226,7 +246,7 @@ function getTextAlign(anchor: string): "left" | "center" | "right" {
   return "center";
 }
 
-/** 创建不参与命中的标签，标签位置始终由所属对象决定 */
+/** 按图形位置创建标签，选中后可转为独立文本框 */
 export function createFabricLabel(shape: Shape): Textbox | null {
   if (shape.text === "" || shape.kind === "text") {
     return null;
@@ -234,14 +254,14 @@ export function createFabricLabel(shape: Shape): Textbox | null {
   const bounds = getBounds(shape);
   let left = bounds.x + bounds.width / 2;
   let top = bounds.y + bounds.height / 2;
-  let width = Math.max(100, bounds.width - 16);
+  let width = Math.max(LABEL_MIN_WIDTH, bounds.width - LABEL_HORIZONTAL_PADDING);
   if (shape.kind === "point") {
     left = shape.x + 20;
     top = shape.y - 18;
     width = 80;
   }
   if (shape.kind === "line" || shape.kind === "arrow" || shape.kind === "connector") {
-    top = top - 16;
+    top = top - LINE_LABEL_OFFSET;
   }
   return new Textbox(shape.text, {
     left: left,

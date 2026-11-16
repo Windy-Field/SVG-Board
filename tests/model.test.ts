@@ -16,6 +16,17 @@ function testRoundTrip(): void {
 }
 test("模板文件可完整往返", testRoundTrip);
 
+/** 旧作品默认使用白色画布，新作品的画布颜色可完整保存 */
+function testBackground(): void {
+  const document = createDocument();
+  const legacy: Record<string, unknown> = JSON.parse(JSON.stringify(document));
+  delete legacy.background;
+  assert.equal(parseDocument(JSON.stringify(legacy)).background, "#ffffff");
+  document.background = "#e2f3e8";
+  assert.equal(parseDocument(JSON.stringify(document)).background, "#e2f3e8");
+}
+test("画布颜色保存并兼容旧作品", testBackground);
+
 /** 拖动顶点后验证中点自动重算，并保留两点线段的关联 */
 function testMidpoint(): void {
   const document = createGeometryTemplate();

@@ -3,6 +3,11 @@ import { compareLayers } from "./model";
 import { createShape, getBounds, isDependent, MAX_SHAPES, moveShape, resizeShape } from "./model";
 import type { BoardDocument, RelationKind, Shape } from "./types";
 
+// 粘贴副本相对原对象的偏移，单位为画布坐标
+const PASTE_OFFSET = 24;
+// 几何构造对象的默认颜色
+const CONSTRUCTION_COLOR = "#148063";
+
 /** 删除选中对象和依赖它们的构造，返回被删除的对象数量 */
 export function deleteShapes(document: BoardDocument, selectedIds: string[]): number {
   const deleted = getDeletionIds(document, selectedIds);
@@ -50,7 +55,7 @@ export function pasteShapes(document: BoardDocument, clipboard: Shape[]): string
       }
     }
     if (!isDependent(shape)) {
-      moveShape(shape, 24, 24);
+      moveShape(shape, PASTE_OFFSET, PASTE_OFFSET);
     }
     shape.layer = document.shapes.length;
     document.shapes.push(shape);
@@ -194,7 +199,7 @@ export function constructShape(
     }
     throw new Error(message);
   }
-  shape.stroke = "#148063";
+  shape.stroke = CONSTRUCTION_COLOR;
   shape.fill = "none";
   shape.relation = { kind: kind, sources: sources };
   shape.layer = document.shapes.length;

@@ -1,6 +1,8 @@
 import "./styles.css";
 import "./workspace.css";
 import "./motion.css";
+import "./selects.css";
+import "./text-toolbar.css";
 import { BoardCanvas } from "./canvas";
 import { arrangeShapes, changeLayers, constructShape, deleteShapes, pasteShapes } from "./commands";
 import { parseDocument, STORAGE_KEY } from "./document";
@@ -18,9 +20,15 @@ import { setSidebar } from "./motion";
 import { prepareDocument } from "./content";
 import { createFabricShape } from "./fabric-shapes";
 import { addPointLabel } from "./point-labels";
+import { detachLabel } from "./shape-labels";
+import { syncLiveEntry } from "./live-entry";
 
+// 提示停留时间，单位为毫秒
 const MESSAGE_DURATION = 6000;
+// 自动保存等待时间，单位为毫秒
 const AUTOSAVE_DELAY = 300;
+// 方向键配合 Shift 时的单次移动距离
+const LARGE_MOVE_DISTANCE = 10;
 let board: BoardCanvas;
 const history = new History();
 let clipboard: Shape[] = [];
@@ -45,7 +53,8 @@ function errorMessage(error: unknown): string {
 /** 显示不改变页面布局的状态信息，后续信息替换旧信息 */
 function notify(message: string): void {
   const element = getElement("message");
-  element.textContent = message.trim().replace(/[，。；：、！？,.!?:;]+$/g, "");
+  const trimmed = message.trim();
+  element.textContent = trimmed.replace(/[，。；：、！？,.!?:;]+$/g, "");
   element.hidden = false;
   element.classList.remove("message-hidden");
   window.clearTimeout(messageTimer);
@@ -255,6 +264,13 @@ function editText(id: string): void {
     }
     shape = label;
     id = label.id;
+  } else if (shape.kind !== "text" && shape.text !== "") {
+    const label = detachLabel(board.document, shape);
+    if (label === null) {
+      return;
+    }
+    shape = label;
+    id = label.id;
   }
   textTarget = id;
   const input = getElement("text-value");
@@ -400,17 +416,15 @@ async function executeAction(action: string): Promise<void> {
     return;
   }
   if (action === "new") {
-    replaceDocument(createDocument());
-  } else if (action === "open") {
-    getInput("file-input").click();
-  } else if (action === "save") {
-    saveLocal();
-  } else if (action === "new-archive") {
     saveLocal();
     board.setDocument(archives.create(createDocument()));
     history.reset(board.document);
     board.fit();
     commit();
+  } else if (action === "open") {
+    getInput("file-input").click();
+  } else if (action === "save") {
+    saveLocal();
   } else if (action === "delete-archive") {
     requestDeleteArchive(archives.active);
   } else if (action === "cancel-delete") {
@@ -709,7 +723,7 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
     event.preventDefault();
     let distance = 1;
     if (event.shiftKey) {
-      distance = 10;
+      distance = LARGE_MOVE_DISTANCE;
     }
     for (const shape of board.getSelectedShapes()) {
       if (shape.locked || (isDependent(shape) && shape.kind !== "text")) {
@@ -792,6 +806,7 @@ getInput("file-input").addEventListener("change", handleFileChange);
 getElement("text-form").addEventListener("submit", handleTextSubmit);
 getElement("polygon-form").addEventListener("submit", handlePolygonSubmit);
 window.addEventListener("pagehide", handlePageHide);
+syncLiveEntry();
 
 /** 只读模式允许浏览、切换视图和导出，不允许改变作品或存档 */
 function isViewAction(action: string): boolean {

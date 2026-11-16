@@ -20,6 +20,14 @@
 .header-workspace {
   flex-shrink: 0;
 }
+.inspector-toggle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: calc(var(--z-raised) + 1);
+  border: 1px solid var(--color-rule);
+  background: var(--color-paper);
+}
 .archive-picker select {
   width: 210px;
   height: 34px;
@@ -83,7 +91,6 @@
 .inspector .property-field > span,
 .inspector .color-field,
 .inspector .color-code,
-.inspector .canvas-background,
 .inspector .object-row button,
 .inspector .text-button,
 .inspector .multi-actions button {
@@ -93,25 +100,31 @@
   width: 96px;
 }
 .tools {
-  gap: 1px;
+  /* 15 个工具共享可用高度，其余高度留给色板、分隔线和间距 */
+  --rail-control: clamp(18px, calc((100cqh - 128px) / 15), 40px);
+  --rail-icon: clamp(14px, calc(var(--rail-control) - 14px), 23px);
+  gap: 2px;
   padding: 8px 0;
+}
+.workspace {
+  container-type: size;
 }
 .tools .tool-button,
 .tools .icon-button {
-  width: 34px;
-  height: 32px;
-  min-height: 32px;
+  width: 40px;
+  height: var(--rail-control);
+  min-height: var(--rail-control);
 }
 .tools svg.lucide {
-  width: 18px;
-  height: 18px;
+  width: var(--rail-icon);
+  height: var(--rail-icon);
 }
 .geometry-tools {
   gap: 2px;
 }
 .geometry-tools .icon-button {
-  height: 30px;
-  min-height: 30px;
+  height: var(--rail-control);
+  min-height: var(--rail-control);
 }
 .tool-divider {
   margin: 6px 0;
@@ -157,49 +170,6 @@
 .markdown-preview a {
   color: var(--color-accent);
 }
-.text-toolbar {
-  position: absolute;
-  z-index: var(--z-raised);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: calc(100% - 16px);
-  overflow-x: auto;
-  padding: 6px;
-  border: 1px solid var(--color-rule);
-  border-radius: 6px;
-  background: var(--color-paper);
-  box-shadow: 0 2px 8px var(--color-backdrop);
-}
-.text-toolbar select,
-.text-toolbar input,
-.text-toolbar button {
-  height: 32px;
-  border: 1px solid var(--color-rule);
-  border-radius: 4px;
-  background: var(--color-paper);
-  padding: 4px;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-.text-toolbar input[type="number"] {
-  width: 54px;
-}
-.text-toolbar select {
-  width: 100px;
-}
-.text-toolbar button {
-  width: 32px;
-  display: grid;
-  place-items: center;
-}
-.text-toolbar input[type="color"] {
-  width: 32px;
-}
-.text-toolbar svg {
-  width: 16px;
-  height: 16px;
-}
 .tool-menu button svg {
   width: 22px;
   height: 22px;
@@ -216,7 +186,7 @@
 }
 @media (max-width: 60rem) {
   #app {
-    grid-template-rows: 112px 48px minmax(0, 1fr) 38px;
+    grid-template-rows: 112px minmax(0, 1fr) 38px;
   }
   .topbar {
     height: auto;
@@ -250,7 +220,7 @@
 }
 @media (max-width: 45rem) {
   #app {
-    grid-template-rows: 104px 46px minmax(0, 1fr) 52px;
+    grid-template-rows: 104px minmax(0, 1fr) 52px;
   }
   .topbar {
     height: auto;
@@ -264,6 +234,12 @@
   .file-actions .primary-button {
     padding: 0 7px;
   }
+  .header-workspace {
+    gap: 2px;
+  }
+  .header-workspace .icon-button {
+    width: 28px;
+  }
   .document-heading input {
     min-width: 0;
   }
@@ -276,8 +252,5 @@
   }
   .inspector {
     width: min(280px, calc(100% - 52px));
-  }
-  .text-toolbar {
-    padding: 4px;
   }
 }

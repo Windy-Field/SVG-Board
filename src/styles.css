@@ -68,7 +68,7 @@ svg.lucide {
 #app {
   height: 100dvh;
   display: grid;
-  grid-template-rows: 68px 48px minmax(0, 1fr) 38px;
+  grid-template-rows: 68px minmax(0, 1fr) 38px;
 }
 #save-status {
   position: absolute;
@@ -159,25 +159,6 @@ h1 span {
 .primary-button:active:not(:disabled) {
   background: var(--color-focus);
   color: var(--color-accent-ink);
-}
-.commandbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding: 0 var(--space-lg);
-  background: var(--color-paper);
-  border-bottom: 1px solid var(--color-rule);
-  min-width: 0;
-}
-.command-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding-right: var(--space-md);
-  border-right: 1px solid var(--color-rule);
-}
-.command-spacer {
-  flex: 1;
 }
 .text-button {
   border-color: transparent;
@@ -416,24 +397,6 @@ h2 .lucide {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-.canvas-background {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--color-muted);
-  margin-top: 12px;
-}
-.canvas-background > span:last-child {
-  margin-left: auto;
-}
-.paper-swatch {
-  width: 24px;
-  height: 24px;
-  background: var(--color-paper);
-  border: 1px solid var(--color-input-rule);
-  border-radius: 3px;
-}
 .checkbox-row {
   display: flex;
   gap: 16px;
@@ -659,15 +622,30 @@ dialog textarea {
 }
 .export-preview {
   height: 240px;
-  display: grid;
-  place-items: center;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--color-workspace);
   border: 1px solid var(--color-rule);
 }
 .export-preview img {
-  max-width: 100%;
-  max-height: 100%;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
+}
+.dialog-actions {
+  flex-wrap: wrap;
+}
+@media (max-height: 600px) {
+  .export-preview {
+    height: 36dvh;
+  }
 }
 #export-error {
   min-height: 18px;
@@ -719,16 +697,13 @@ dialog textarea {
   .document-heading input {
     width: 190px;
   }
-  .arrangement {
-    display: none;
-  }
   .board-size {
     display: none;
   }
 }
 @media (max-width: 45rem) {
   #app {
-    grid-template-rows: 60px 46px minmax(0, 1fr) 52px;
+    grid-template-rows: 60px minmax(0, 1fr) 52px;
   }
   .workspace {
     grid-template-columns: 52px minmax(0, 1fr);
@@ -773,17 +748,6 @@ dialog textarea {
   }
   .file-actions .primary-button span {
     display: none;
-  }
-  .commandbar {
-    gap: 0;
-    padding: 0 6px;
-  }
-  .command-group {
-    gap: 0;
-    padding-right: 2px;
-  }
-  .commandbar .icon-button {
-    width: 28px;
   }
   .object-status {
     display: none;

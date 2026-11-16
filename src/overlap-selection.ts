@@ -1,5 +1,6 @@
 import type { Point } from "./types";
 
+// 两次点击仍算同一位置的距离，单位为屏幕像素
 const REPEAT_DISTANCE = 5;
 
 /** 记录重复单击位置，轮换重叠对象时不改变对象层级 */

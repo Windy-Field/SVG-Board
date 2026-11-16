@@ -89,6 +89,7 @@ export interface BoardDocument {
   height: number;
   shapes: Shape[];
   description: string;
+  background: string;
   contentBounds?: Bounds;
 }
 

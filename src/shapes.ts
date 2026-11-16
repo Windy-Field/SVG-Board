@@ -1,5 +1,6 @@
 import type { Point, Shape } from "./types";
 
+// 初始曲线弯曲距离占起终点间距的比例
 const CURVE_BEND_RATIO = 0.3;
 
 /** 按边数生成以外框为范围的正多边形顶点 */

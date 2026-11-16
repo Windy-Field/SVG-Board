@@ -4,7 +4,9 @@ import { parseDocument, STORAGE_KEY } from "../../src/document";
 import { createDocument, createShape } from "../../src/model";
 import type { BoardDocument, Point, Shape } from "../../src/types";
 
+// 测试浏览器通道由运行环境指定
 const BROWSER_CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
+// 交互测试使用的开发服务地址
 const APP_URL = "http://127.0.0.1:5173/";
 
 /** 在新浏览器页面中预置作品，复现测试所需的几何与锁定条件 */

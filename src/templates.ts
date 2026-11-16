@@ -2,10 +2,20 @@ import { createDocument, createShape } from "./model";
 import { updateRelations } from "./geometry";
 import type { BoardDocument, Shape, ShapeKind } from "./types";
 
+// 流程图处理节点填充色
 const FLOW_BLUE = "#eaf1ff";
+// 流程图起止节点填充色
 const FLOW_GREEN = "#e9f6ee";
+// 流程图判断节点填充色
 const FLOW_YELLOW = "#fff6dc";
+// 三角形中线与中点的颜色
 const GEOMETRY_GREEN = "#148063";
+// 流程图连接文字字号
+const FLOW_LABEL_SIZE = 18;
+// 流程图连接线颜色
+const FLOW_LINE_COLOR = "#64748b";
+// 三角形顶点名称的字号
+const VERTEX_LABEL_SIZE = 24;
 
 /** 向模板添加节点并设置文字，返回节点以便建立连接 */
 function addNode(
@@ -35,9 +45,9 @@ function addConnector(document: BoardDocument, start: Shape, end: Shape, label: 
   shape.relation = { kind: "connector", sources: [start.id, end.id] };
   shape.name = start.name + " → " + end.name;
   shape.text = label;
-  shape.fontSize = 18;
+  shape.fontSize = FLOW_LABEL_SIZE;
   shape.fill = "none";
-  shape.stroke = "#64748b";
+  shape.stroke = FLOW_LINE_COLOR;
   shape.layer = -1;
   document.shapes.push(shape);
 }
@@ -116,7 +126,7 @@ export function createGeometryTemplate(): BoardDocument {
       32,
       "none"
     );
-    label.fontSize = 24;
+    label.fontSize = VERTEX_LABEL_SIZE;
     label.textAlign = "start";
     label.relation = { kind: "label", sources: [vertex.id], offsetX: 10, offsetY: -36 };
     vertex.text = "";

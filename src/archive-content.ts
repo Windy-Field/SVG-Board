@@ -21,7 +21,7 @@ export function archiveContent(document: BoardDocument): string {
       shape.group = groups.get(shape.group) || "";
     }
   }
-  // 裁剪范围随保存更新，去重只比较名称、说明和可编辑对象
+  // 裁剪范围随保存更新，去重比较名称、说明、画布颜色和可编辑对象
   let emptySize = "";
   if (copy.shapes.length === 0) {
     emptySize = copy.width + "x" + copy.height;
@@ -29,6 +29,7 @@ export function archiveContent(document: BoardDocument): string {
   return JSON.stringify({
     name: copy.name.trim(),
     description: copy.description,
+    background: copy.background,
     shapes: copy.shapes,
     emptySize: emptySize
   });

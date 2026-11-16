@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import JSZip from "jszip";
 
+// 本地发布压缩包的输出目录
 const OUTPUT_DIRECTORY = "release";
 
 /** 将发布目录中的文件加入压缩包，保留第三方许可和示例 */

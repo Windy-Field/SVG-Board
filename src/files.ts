@@ -6,9 +6,14 @@ import { compareLayers } from "./model";
 import type { BoardDocument, Shape } from "./types";
 import { prepareDocument, contentBounds, visualBounds } from "./content";
 
+// 导出图形四周留白，单位为画布坐标
 const EXPORT_PADDING = 32;
+// PNG 默认分辨率倍率
 const PNG_SCALE = 2;
+// PNG 任意一边的最大像素数
 const MAX_PNG_SIZE = 8192;
+// 下载开始后释放临时地址的等待时间，单位为毫秒
+const DOWNLOAD_RELEASE_DELAY = 1000;
 
 /** 控制导出内容，辅助对象和背景不影响原始项目文件 */
 export interface ExportOptions {
@@ -48,7 +53,7 @@ export function createSvg(document: BoardDocument, options: ExportOptions): stri
     renderOnAddRemove: false
   });
   if (!options.transparent) {
-    canvas.backgroundColor = "#ffffff";
+    canvas.backgroundColor = document.background;
   }
   visible.sort(compareLayers);
   for (const shape of visible) {
@@ -79,7 +84,7 @@ export function downloadBlob(blob: Blob, name: string): void {
   function releaseUrl(): void {
     URL.revokeObjectURL(url);
   }
-  window.setTimeout(releaseUrl, 1000);
+  window.setTimeout(releaseUrl, DOWNLOAD_RELEASE_DELAY);
 }
 
 /** 将文件名中的路径字符替换掉，保留用户给作品起的名称 */
@@ -106,7 +111,8 @@ export async function openProject(file: File): Promise<BoardDocument> {
     throw new Error("文件不能超过 8 MB");
   }
   const text = await file.text();
-  if (text.trimStart().startsWith("<")) {
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("<")) {
     const xml = new DOMParser().parseFromString(text, "image/svg+xml");
     if (xml.querySelector("parsererror") !== null) {
       throw new Error("SVG 文件格式损坏");

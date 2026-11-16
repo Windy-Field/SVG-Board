@@ -1,7 +1,20 @@
-import { findShape, isDependent, isLine, moveShape, resizeShape, SHAPE_LABELS } from "./model";
+import {
+  findShape,
+  isDependent,
+  isLine,
+  moveShape,
+  resizeShape,
+  SHAPE_LABELS,
+  MAX_COORDINATE,
+  MIN_BOARD_SIZE,
+  MAX_BOARD_SIZE,
+  MIN_FONT_SIZE,
+  MAX_FONT_SIZE
+} from "./model";
 import { commandButton, getElement, refreshIcons } from "./ui";
 import type { BoardDocument, Shape } from "./types";
 import { fontOptions } from "./fonts";
+import { MAX_CORNER_RADIUS, MAX_POINT_RADIUS } from "./model";
 
 /** 校验属性控件并更新作品，返回是否需要提交修改 */
 export function applyProperty(
@@ -18,8 +31,15 @@ export function applyProperty(
     return false;
   }
   const value = Number(control.value);
+  if (property === "background") {
+    if (!/^#[0-9a-f]{6}$/i.test(control.value)) {
+      return false;
+    }
+    document.background = control.value;
+    return true;
+  }
   if (property === "boardWidth" || property === "boardHeight") {
-    if (!Number.isFinite(value) || value < 100 || value > 10000) {
+    if (!Number.isFinite(value) || value < MIN_BOARD_SIZE || value > MAX_BOARD_SIZE) {
       return false;
     }
     if (property === "boardWidth") {
@@ -128,7 +148,8 @@ function applyCheckbox(shape: Shape, property: string, checked: boolean): boolea
 function escapeHtml(text: string): string {
   const span = document.createElement("span");
   span.textContent = text;
-  return span.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const escapedQuotes = span.innerHTML.replace(/"/g, "&quot;");
+  return escapedQuotes.replace(/'/g, "&#39;");
 }
 
 /** 生成数值属性输入，参数明确列出合法范围 */
@@ -205,9 +226,11 @@ function colorField(label: string, property: string, value: string): string {
 function renderBoardProperties(document: BoardDocument): string {
   return (
     '<section class="property-section"><div class="section-title"><h2>画板</h2><span>01</span></div><div class="property-grid">' +
-    numberField("画板宽度", "boardWidth", document.width, 100, 10000, false) +
-    numberField("画板高度", "boardHeight", document.height, 100, 10000, false) +
-    '</div><div class="canvas-background"><span class="paper-swatch"></span><span>白色画布</span><span>SVG</span></div></section>'
+    numberField("画板宽度", "boardWidth", document.width, MIN_BOARD_SIZE, MAX_BOARD_SIZE, false) +
+    numberField("画板高度", "boardHeight", document.height, MIN_BOARD_SIZE, MAX_BOARD_SIZE, false) +
+    "</div>" +
+    colorField("画布颜色", "background", document.background) +
+    "</section>"
   );
 }
 
@@ -239,10 +262,14 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     '<label class="property-field"><span>对象名称</span><input data-property="name" aria-label="对象名称" maxlength="100" value="' +
     escapeHtml(shape.name) +
     '" /></label><div class="property-grid">';
-  markup = markup + numberField("X", "x", shape.x, -100000, 100000, fixed);
-  markup = markup + numberField("Y", "y", shape.y, -100000, 100000, fixed);
-  markup = markup + numberField("宽度", "width", shape.width, -100000, 100000, fixed || point);
-  markup = markup + numberField("高度", "height", shape.height, -100000, 100000, fixed || point);
+  markup = markup + numberField("X", "x", shape.x, -MAX_COORDINATE, MAX_COORDINATE, fixed);
+  markup = markup + numberField("Y", "y", shape.y, -MAX_COORDINATE, MAX_COORDINATE, fixed);
+  markup =
+    markup +
+    numberField("宽度", "width", shape.width, -MAX_COORDINATE, MAX_COORDINATE, fixed || point);
+  markup =
+    markup +
+    numberField("高度", "height", shape.height, -MAX_COORDINATE, MAX_COORDINATE, fixed || point);
   markup =
     markup + numberField("旋转角度", "rotation", shape.rotation, -36000, 36000, fixed || point);
   markup = markup + numberField("透明度", "opacity", shape.opacity, 0, 1, false);
@@ -250,11 +277,13 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
   markup = markup + colorField("描边 / 文字", "stroke", shape.stroke);
   if (shape.kind === "rect") {
     markup =
-      markup + numberField("圆角", "cornerRadius", shape.cornerRadius, 0, 50000, shape.locked);
+      markup +
+      numberField("圆角", "cornerRadius", shape.cornerRadius, 0, MAX_CORNER_RADIUS, shape.locked);
   }
   if (shape.kind === "point") {
     markup =
-      markup + numberField("点半径", "pointRadius", shape.pointRadius, 1, 5000, shape.locked);
+      markup +
+      numberField("点半径", "pointRadius", shape.pointRadius, 1, MAX_POINT_RADIUS, shape.locked);
   }
   if (!isLine(shape) && shape.kind !== "pencil" && shape.kind !== "text") {
     markup = markup + colorField("填充", "fill", shape.fill);
@@ -264,7 +293,7 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     markup +
     '<div class="property-grid">' +
     numberField("线宽", "strokeWidth", shape.strokeWidth, 0, 100, false) +
-    numberField("字号", "fontSize", shape.fontSize, 8, 200, false) +
+    numberField("字号", "fontSize", shape.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, false) +
     "</div>";
   markup =
     markup +

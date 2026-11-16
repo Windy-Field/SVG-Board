@@ -2,9 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
+// 检查命令从项目根目录运行
 const ROOT = process.cwd();
+// 需要遍历的正式代码目录
 const SOURCES = ["src", "scripts", "tests"];
+// 需要额外检查的根目录配置文件
 const CONFIG_FILES = ["vite.config.ts", "playwright.config.ts"];
+// 所有被禁用的复合赋值符号
 const ASSIGNMENT_OPERATORS = new Set([
   ts.SyntaxKind.PlusEqualsToken,
   ts.SyntaxKind.MinusEqualsToken,

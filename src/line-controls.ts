@@ -2,7 +2,7 @@ import { Control, Point } from "fabric";
 import type { FabricObject, TMat2D, TPointerEvent, Transform } from "fabric";
 import { getLinePoints } from "./geometry";
 import { updateFabricGeometry } from "./fabric-shapes";
-import { GRID_SIZE } from "./model";
+import { GRID_SIZE, MAX_BEND_RATIO } from "./model";
 import type { Shape, Point as BoardPoint } from "./types";
 
 /** 使用 Fabric 控制点拖动线条端点，模型始终记录真正的起点和终点 */
@@ -79,7 +79,10 @@ export class LineControls {
     if (this.snap()) {
       left = Math.round(left / GRID_SIZE) * GRID_SIZE;
     }
-    this.shape.bend = Math.max(-10, Math.min(10, (left - this.shape.x) / this.shape.width));
+    this.shape.bend = Math.max(
+      -MAX_BEND_RATIO,
+      Math.min(MAX_BEND_RATIO, (left - this.shape.x) / this.shape.width)
+    );
     this.shape.relation = { kind: "none", sources: [] };
     updateFabricGeometry(transform.target, this.shape);
     this.changed();

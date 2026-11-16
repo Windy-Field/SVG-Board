@@ -1,0 +1,117 @@
+/* 文字配置栏的统一尺寸，控制按钮和字体菜单分开排布 */
+:root {
+  /* 文字工具的按钮和输入框高度 */
+  --text-control-size: 32px;
+  /* 字体菜单触发按钮宽度 */
+  --text-font-width: 112px;
+  /* 字体弹出菜单宽度 */
+  --text-menu-width: 192px;
+}
+
+.text-toolbar {
+  position: absolute;
+  z-index: var(--z-raised);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  padding: 6px;
+  border: 1px solid var(--color-rule);
+  border-radius: 6px;
+  background: var(--color-paper);
+  box-shadow: 0 3px 12px var(--color-backdrop);
+}
+.text-format-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.text-format-group + .text-format-group {
+  padding-left: 6px;
+  border-left: 1px solid var(--color-rule);
+}
+.text-toolbar button,
+.text-toolbar input:not([type="hidden"]) {
+  height: var(--text-control-size);
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.text-toolbar button {
+  width: var(--text-control-size);
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.text-toolbar button[aria-pressed="true"] {
+  color: var(--color-accent);
+  background: var(--color-selected);
+}
+.text-toolbar #font-menu-button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: var(--text-font-width);
+  padding: 0 8px;
+}
+#font-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.text-toolbar input[type="number"] {
+  width: 56px;
+  padding: 0 4px 0 8px;
+  border-color: var(--color-rule);
+  background: var(--color-paper);
+}
+.text-toolbar input[type="color"] {
+  width: var(--text-control-size);
+  padding: 6px;
+  cursor: pointer;
+}
+.text-toolbar svg {
+  width: 18px;
+  height: 18px;
+}
+.font-menu {
+  position: fixed;
+  margin: 0;
+  width: var(--text-menu-width);
+  max-height: 280px;
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid var(--color-rule);
+  border-radius: 6px;
+  background: var(--color-paper);
+  box-shadow: 0 4px 16px var(--color-backdrop);
+}
+.font-menu:popover-open {
+  display: grid;
+  gap: 2px;
+}
+.font-menu button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  text-align: left;
+  font-size: 15px;
+}
+.font-menu button[aria-checked="true"] {
+  color: var(--color-accent);
+  background: var(--color-selected);
+}
+@media (max-width: 45rem) {
+  .text-toolbar {
+    gap: 4px;
+  }
+  .text-format-group + .text-format-group {
+    padding-left: 0;
+    border-left: 0;
+  }
+}

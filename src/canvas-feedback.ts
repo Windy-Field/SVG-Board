@@ -2,8 +2,14 @@ import { Point } from "fabric";
 import type { Canvas, FabricObject } from "fabric";
 import type { Bounds } from "./types";
 
+// 悬停和框选的提示颜色
 const HOVER_COLOR = "#2563eb";
+// 提示轮廓线宽，单位为屏幕像素
 const OUTLINE_WIDTH = 1.5;
+// 锁定标记的底色
+const LOCK_BACKGROUND = "#ffffff";
+// 锁定标记的描边颜色
+const LOCK_COLOR = "#475569";
 
 /** 只绘制悬停提示，不创建作品对象，也不参与保存与撤销 */
 export class CanvasFeedback {
@@ -51,9 +57,9 @@ export class CanvasFeedback {
       const left = anchor.x - 8;
       const top = anchor.y - 18;
       context.save();
-      context.fillStyle = "#ffffff";
-      context.strokeStyle = "#475569";
-      context.lineWidth = 1.5;
+      context.fillStyle = LOCK_BACKGROUND;
+      context.strokeStyle = LOCK_COLOR;
+      context.lineWidth = OUTLINE_WIDTH;
       context.fillRect(left - 3, top - 3, 18, 20);
       context.strokeRect(left, top + 7, 12, 9);
       context.beginPath();

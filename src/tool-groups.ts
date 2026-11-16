@@ -1,5 +1,6 @@
 import { createElement } from "lucide";
 import { TOOL_MODES } from "./tool-definitions";
+// 长按展开工具菜单的等待时间，单位为毫秒
 const LONG_PRESS_DELAY = 350;
 let timer = 0;
 let anchor: HTMLButtonElement | null = null;

@@ -6,21 +6,52 @@
     <meta name="theme-color" content="#f5f6f8" />
     <meta name="description" content="SVG-Board 本地矢量绘图与动态几何编辑器" />
     <meta name="author" content="Octorange/Windy-Field" />
-    <title>SVG-Board · 矢量工作台</title>
+    <title>SVG-Board</title>
   </head>
   <body>
     <p>正在打开 SVG-Board</p>
     <p>本地首次使用请先运行 npm ci 和 npm run build</p>
     <script>
-      /** 网页进入开发入口，本地双击进入已经构建的独立编辑器 */
-      function openEditor() {
-        let target = "editor.html";
-        if (window.location.protocol === "file:") {
-          target = "dist/editor.html";
-        }
-        window.location.replace(target);
+      // 开发服务固定入口，运行时与网页使用同一地址
+      const DEVELOPMENT_URL = "http://127.0.0.1:5173";
+      // 服务探测最长等待时间，单位为毫秒
+      const CHECK_TIMEOUT = 800;
+
+      /** 服务未运行时打开最近构建的离线编辑器 */
+      function openOffline() {
+        window.location.replace("dist/editor.html?opened=" + Date.now());
       }
-      openEditor();
+
+      /** 双击时优先使用开发页面，服务关闭后使用离线文件 */
+      async function openEditor() {
+        if (window.location.protocol !== "file:") {
+          window.location.replace("editor.html");
+          return;
+        }
+        const controller = new AbortController();
+        /** 到期后结束本地服务探测 */
+        function abortCheck() {
+          controller.abort();
+        }
+        const timer = window.setTimeout(abortCheck, CHECK_TIMEOUT);
+        try {
+          const response = await fetch(DEVELOPMENT_URL + "/__svg_board_runtime", {
+            cache: "no-store",
+            signal: controller.signal
+          });
+          const identity = await response.text();
+          if (response.ok && identity === "svg-board-development") {
+            window.location.replace(DEVELOPMENT_URL + "/editor.html");
+          } else {
+            openOffline();
+          }
+        } catch {
+          openOffline();
+        } finally {
+          window.clearTimeout(timer);
+        }
+      }
+      void openEditor();
     </script>
   </body>
 </html>

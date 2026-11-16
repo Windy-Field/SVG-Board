@@ -1,0 +1,45 @@
+/* 下拉控件尺寸与箭头留白，所有界面选择栏共用 */
+:root {
+  /* 下拉框外框高度，单位为像素 */
+  --select-height: 34px;
+  /* 选中文字左右的基本留白 */
+  --select-padding: 10px;
+  /* 右侧箭头的显示尺寸 */
+  --select-arrow-size: 16px;
+}
+
+select,
+.archive-picker select,
+.property-field select {
+  appearance: none;
+  height: var(--select-height);
+  min-width: 0;
+  border: 1px solid var(--color-input-rule);
+  border-radius: 6px;
+  background-color: var(--color-paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23576478' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right var(--select-padding) center;
+  background-repeat: no-repeat;
+  padding: 0 calc(var(--select-padding) * 2 + var(--select-arrow-size)) 0 var(--select-padding);
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.archive-picker select {
+  font-weight: 600;
+  text-align: center;
+  padding-left: calc(var(--select-padding) * 2 + var(--select-arrow-size));
+}
+
+@media (hover: hover) {
+  select:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    background-color: var(--color-selected);
+  }
+}
+
+option {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-weight: 400;
+}

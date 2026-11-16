@@ -1,13 +1,56 @@
 import type { BoardDocument, Bounds, Point, Shape, ShapeKind } from "./types";
 
+// 新建画板的默认宽度，单位为画布坐标
 export const BOARD_WIDTH = 1200;
+// 新建画板的默认高度，单位为画布坐标
 export const BOARD_HEIGHT = 800;
+// 网格间距，绘制和端点调整共用
 export const GRID_SIZE = 20;
+// 单份作品的对象数量上限
 export const MAX_SHAPES = 2000;
+// 单条路径允许保存的最大字符数
 export const MAX_PATH_LENGTH = 200000;
+// 坐标和对象尺寸允许的最大绝对值
+export const MAX_COORDINATE = 100000;
+// 保存画板允许的最小边长
+export const MIN_BOARD_SIZE = 100;
+// 保存画板允许的最大边长
+export const MAX_BOARD_SIZE = 10000;
+// 撤销历史保留的最大快照数
 export const HISTORY_LIMIT = 80;
+// 新对象的默认描边颜色
 export const DEFAULT_STROKE = "#334155";
+// 新对象的默认填充颜色
 export const DEFAULT_FILL = "#ffffff";
+// 新作品的默认画布底色
+export const DEFAULT_BACKGROUND = "#ffffff";
+// 文字大小下限，单位为画布坐标
+export const MIN_FONT_SIZE = 8;
+// 文字大小上限，单位为画布坐标
+export const MAX_FONT_SIZE = 200;
+// 新对象默认字号
+export const DEFAULT_FONT_SIZE = 20;
+// 几何点默认半径
+export const DEFAULT_POINT_RADIUS = 5;
+// 正多边形默认边数
+export const DEFAULT_POLYGON_SIDES = 5;
+// 普通对象的默认描边宽度
+export const DEFAULT_STROKE_WIDTH = 2;
+// 几何点允许的最大半径
+export const MAX_POINT_RADIUS = 5000;
+// 矩形允许的最大圆角半径
+export const MAX_CORNER_RADIUS = 50000;
+// 多边形设置框允许的最少边数
+export const MIN_POLYGON_SIDES = 3;
+// 正多边形工具允许的最多边数
+export const MAX_REGULAR_SIDES = 32;
+// 自定义多边形允许的最多顶点数
+export const MAX_POLYGON_POINTS = 1000;
+// 折线中段允许超出两端范围的最大比例
+export const MAX_BEND_RATIO = 10;
+// 新作品的说明初始模板
+const DESCRIPTION_TEMPLATE = "# 项目介绍\n\n## 用途\n\n\n## 图示说明\n\n\n## 备注\n\n";
+// 图形名称用于属性标题与新对象命名
 export const SHAPE_LABELS: Record<ShapeKind, string> = {
   rect: "矩形",
   ellipse: "椭圆",
@@ -31,7 +74,8 @@ export function createDocument(): BoardDocument {
     width: BOARD_WIDTH,
     height: BOARD_HEIGHT,
     shapes: [],
-    description: "# 项目介绍\n\n## 用途\n\n\n## 图示说明\n\n\n## 备注\n\n"
+    background: DEFAULT_BACKGROUND,
+    description: DESCRIPTION_TEMPLATE
   };
 }
 
@@ -46,15 +90,15 @@ export function createShape(kind: ShapeKind, position: Point): Shape {
     width: 0,
     height: 0,
     cornerRadius: 0,
-    pointRadius: 5,
+    pointRadius: DEFAULT_POINT_RADIUS,
     rotation: 0,
     stroke: DEFAULT_STROKE,
     fill: DEFAULT_FILL,
-    strokeWidth: 2,
+    strokeWidth: DEFAULT_STROKE_WIDTH,
     opacity: 1,
     dash: false,
     text: "",
-    fontSize: 20,
+    fontSize: DEFAULT_FONT_SIZE,
     fontFamily: "sans-serif",
     textAlign: "middle",
     textDirection: "horizontal",
@@ -62,7 +106,7 @@ export function createShape(kind: ShapeKind, position: Point): Shape {
     italic: false,
     underline: false,
     points: [],
-    sides: 5,
+    sides: DEFAULT_POLYGON_SIDES,
     bend: 0.5,
     locked: false,
     hidden: false,
@@ -138,25 +182,6 @@ export function getRotatedBounds(shape: Shape): Bounds {
     width: rotatedWidth * 2,
     height: rotatedHeight * 2
   };
-}
-
-/** 合并多个对象的边界，空数组返回 null */
-export function getCombinedBounds(shapes: Shape[]): Bounds | null {
-  if (shapes.length === 0) {
-    return null;
-  }
-  let left = Infinity;
-  let top = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
-  for (const shape of shapes) {
-    const bounds = getRotatedBounds(shape);
-    left = Math.min(left, bounds.x);
-    top = Math.min(top, bounds.y);
-    right = Math.max(right, bounds.x + bounds.width);
-    bottom = Math.max(bottom, bounds.y + bounds.height);
-  }
-  return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 /** 将对象移动指定距离，画笔路径由渲染库跟随对象的位置显示 */

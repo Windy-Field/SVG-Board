@@ -12,6 +12,7 @@ import { CurveControls } from "./curve-controls";
 import { EditorCanvas } from "./editor-canvas";
 import { constructShape } from "./commands";
 import { strokeInMarquee } from "./marquee";
+import { detachLabel } from "./shape-labels";
 import { regularPoints, fitPolygon } from "./shapes";
 import { updateRelations } from "./geometry";
 import {
@@ -26,15 +27,42 @@ import {
   moveShape,
   resizeShape
 } from "./model";
+import {
+  DEFAULT_STROKE,
+  DEFAULT_FILL,
+  DEFAULT_POLYGON_SIDES,
+  MIN_FONT_SIZE,
+  MAX_FONT_SIZE
+} from "./model";
+import { MAX_POINT_RADIUS } from "./model";
 import type { BoardDocument, Bounds, Point as BoardPoint, Shape, Tool, Viewport } from "./types";
 
+// 画布缩放下限，0.15 表示 15%
 const MIN_ZOOM = 0.15;
+// 画布缩放上限，4 表示 400%
 const MAX_ZOOM = 4;
+// 适应画布时四周预留的屏幕像素
 const CANVAS_MARGIN = 40;
-const GRID_COLOR = "#9ca9bd";
+// 浅色画布使用的网格点颜色
+const GRID_COLOR = "#7889a2";
+// 深色画布使用的网格点颜色
+const GRID_LIGHT_COLOR = "#bac8dc";
+// 网格点半径，单位为屏幕像素
+const GRID_RADIUS = 1.05;
+// 单击与拖动的区分距离，单位为屏幕像素
 const CLICK_DISTANCE = 4;
+// 几何点命中的容差，单位为屏幕像素
 const POINT_HIT_DISTANCE = 12;
+// 右键框选边缘的容差，单位为屏幕像素
 const MARQUEE_TOLERANCE = 3;
+// 低于此亮度时使用浅色网格，取值范围为 0 至 255
+const DARK_BACKGROUND_THRESHOLD = 128;
+// 网格在缩小时仍保持的最小屏幕间距
+const MIN_GRID_SPACING = 12;
+// 自由画笔默认笔宽，单位为画布坐标
+const PENCIL_WIDTH = 2;
+// 滚轮缩放灵敏度
+const WHEEL_ZOOM_SPEED = 0.005;
 
 /** 画布通过回调报告作品、选择和视口变化 */
 export interface CanvasCallbacks {
@@ -73,8 +101,8 @@ export class BoardCanvas {
   showGrid = true;
   snap = true;
   readOnly = false;
-  stroke = "#334155";
-  fill = "#ffffff";
+  stroke = DEFAULT_STROKE;
+  fill = DEFAULT_FILL;
   private host: HTMLElement;
   private fabric: Canvas;
   private callbacks: CanvasCallbacks;
@@ -92,7 +120,7 @@ export class BoardCanvas {
   private spacePressed = false;
   private rightSelection: { start: BoardPoint; append: boolean } | null = null;
   private selectionClick: { id: string; x: number; y: number; ids: string[] } | null = null;
-  polygonSides = 5;
+  polygonSides = DEFAULT_POLYGON_SIDES;
   private customVertices: BoardPoint[] = [];
   private polygonPreview: Polygon | null = null;
   private overlapSelection = new OverlapSelection();
@@ -501,7 +529,10 @@ export class BoardCanvas {
       if (shape.textDirection === "vertical") {
         shape.text = object.text.replace(/\n/g, "");
       }
-      shape.fontSize = Math.min(200, Math.max(8, (original.fontSize * scale.y) / initialScale.y));
+      shape.fontSize = Math.min(
+        MAX_FONT_SIZE,
+        Math.max(MIN_FONT_SIZE, (original.fontSize * scale.y) / initialScale.y)
+      );
       shape.height = object.getScaledHeight();
     }
     if (object instanceof Path && shape.kind === "curve") {
@@ -844,7 +875,7 @@ export class BoardCanvas {
         return;
       }
       shape.pointRadius = Math.min(
-        5000,
+        MAX_POINT_RADIUS,
         Math.max(1, Math.hypot(position.x - gesture.start.x, position.y - gesture.start.y))
       );
       this.drawPreview();
@@ -866,7 +897,7 @@ export class BoardCanvas {
       if (shape.textDirection === "vertical") {
         textHeight = textHeight / Math.max(1, lines);
       }
-      shape.fontSize = Math.max(8, Math.min(200, textHeight / 1.2));
+      shape.fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, textHeight / 1.2));
     }
     if (
       (event.e.shiftKey || this.tool === "square" || shape.kind === "polygon") &&
@@ -1182,6 +1213,15 @@ export class BoardCanvas {
     if (event.button !== 0) {
       return;
     }
+    if (
+      !this.readOnly &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      this.selectShapeLabel(position)
+    ) {
+      return;
+    }
     const actual = this.fabric.searchPossibleTargets(this.fabric.getObjects(), position).target;
     const active = this.fabric.getActiveObject();
     const activeId = this.selectedIds[0];
@@ -1253,6 +1293,33 @@ export class BoardCanvas {
     if (shape !== undefined && shape.group !== "") {
       this.select(id, false);
     }
+  }
+
+  /** 点击标签时保留原外观，并改由独立文本框接收后续手势 */
+  private selectShapeLabel(position: Point): boolean {
+    const labels = Array.from(this.labels.entries());
+    labels.reverse();
+    for (const entry of labels) {
+      const object = entry[1];
+      if (
+        !object.visible ||
+        this.fabric.searchPossibleTargets([object], position).target === undefined
+      ) {
+        continue;
+      }
+      const owner = findShape(this.document, entry[0]);
+      if (owner === undefined || owner.locked) {
+        continue;
+      }
+      const label = detachLabel(this.document, owner);
+      if (label !== null) {
+        this.selectedIds = [label.id];
+        this.render();
+        this.callbacks.changed();
+        return true;
+      }
+    }
+    return false;
   }
 
   /** 用库的实际命中检查收集对象，文本框优先于同位置的线条 */
@@ -1487,7 +1554,7 @@ export class BoardCanvas {
     if (this.fabric.isDrawingMode) {
       const brush = new PencilBrush(this.fabric);
       brush.color = this.stroke;
-      brush.width = 2;
+      brush.width = PENCIL_WIDTH;
       this.fabric.freeDrawingBrush = brush;
     }
     this.fabric.setCursor(this.fabric.defaultCursor);
@@ -1498,7 +1565,7 @@ export class BoardCanvas {
     event.e.preventDefault();
     if (event.e.ctrlKey || event.e.metaKey) {
       this.zoomTo(
-        this.viewport.zoom * Math.exp(-event.e.deltaY * 0.005),
+        this.viewport.zoom * Math.exp(-event.e.deltaY * WHEEL_ZOOM_SPEED),
         this.fabric.getViewportPoint(event.e)
       );
       return;
@@ -1514,14 +1581,22 @@ export class BoardCanvas {
     const width = this.fabric.getWidth();
     const height = this.fabric.getHeight();
     context.save();
-    context.fillStyle = "#ffffff";
+    context.fillStyle = this.document.background;
     context.fillRect(0, 0, width, height);
     if (this.showGrid) {
       let spacing = GRID_SIZE * this.viewport.zoom;
-      while (spacing < 12) {
+      while (spacing < MIN_GRID_SPACING) {
         spacing = spacing * 2;
       }
+      const color = this.document.background;
+      const red = Number.parseInt(color.slice(1, 3), 16);
+      const green = Number.parseInt(color.slice(3, 5), 16);
+      const blue = Number.parseInt(color.slice(5, 7), 16);
+      const brightness = red * 0.2126 + green * 0.7152 + blue * 0.0722;
       context.fillStyle = GRID_COLOR;
+      if (brightness < DARK_BACKGROUND_THRESHOLD) {
+        context.fillStyle = GRID_LIGHT_COLOR;
+      }
       const startX = ((this.viewport.x % spacing) + spacing) % spacing;
       const startY = ((this.viewport.y % spacing) + spacing) % spacing;
       for (let left = startX; left < width - 6; left = left + spacing) {
@@ -1533,7 +1608,7 @@ export class BoardCanvas {
             continue;
           }
           context.beginPath();
-          context.arc(left, top, 0.85, 0, Math.PI * 2);
+          context.arc(left, top, GRID_RADIUS, 0, Math.PI * 2);
           context.fill();
         }
       }
@@ -1578,6 +1653,7 @@ export class BoardCanvas {
       const label = createFabricLabel(shape);
       if (label !== null) {
         label.visible = object.visible;
+        label.evented = this.tool === "select";
         this.fabric.add(label);
         this.labels.set(shape.id, label);
       }
