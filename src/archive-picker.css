@@ -1,0 +1,79 @@
+/* 存档触发按钮与弹出菜单共用行高，名称始终居中 */
+:root {
+  /* 标题栏存档按钮的高度，单位为像素 */
+  --archive-control-height: 36px;
+  /* 每个存档选项的最小高度，单位为像素 */
+  --archive-option-height: 38px;
+  /* 存档菜单的最大高度，超过后在菜单内部滚动 */
+  --archive-menu-height: 280px;
+}
+.archive-picker {
+  min-width: 0;
+}
+#archive-select {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 6px;
+  width: 210px;
+  height: var(--archive-control-height);
+  padding: 0 10px;
+  border: 1px solid var(--color-input-rule);
+  border-radius: 6px;
+  background: var(--color-paper);
+}
+#archive-label {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+#archive-select svg {
+  grid-column: 3;
+  width: 18px;
+  height: 18px;
+  color: var(--color-muted);
+}
+#archive-select[aria-expanded="true"] {
+  border-color: var(--color-accent);
+}
+.archive-options {
+  position: fixed;
+  margin: 0;
+  padding: 5px;
+  max-width: calc(100vw - 16px);
+  max-height: var(--archive-menu-height);
+  overflow-y: auto;
+  border: 1px solid var(--color-rule);
+  border-radius: 6px;
+  background: var(--color-paper);
+  box-shadow: 0 4px 16px var(--color-backdrop);
+}
+.archive-options:popover-open {
+  display: grid;
+  gap: 2px;
+}
+.archive-options button {
+  min-width: 0;
+  min-height: var(--archive-option-height);
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  font-size: 14px;
+}
+.archive-options button[aria-selected="true"] {
+  color: var(--color-accent);
+  background: var(--color-selected);
+}
+@media (max-width: 60rem) {
+  #archive-select {
+    width: 100%;
+  }
+}

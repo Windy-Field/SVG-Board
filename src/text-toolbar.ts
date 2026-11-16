@@ -6,10 +6,6 @@ import { MIN_FONT_SIZE, MAX_FONT_SIZE } from "./model";
 const TOOLBAR_MARGIN = 8;
 // 浮动工具栏与选区之间的距离，单位为屏幕像素
 const TOOLBAR_GAP = 14;
-// 字体菜单的最大高度，单位为屏幕像素
-const FONT_MENU_HEIGHT = 280;
-// 字体菜单宽度，单位为屏幕像素
-const FONT_MENU_WIDTH = 192;
 // 菜单与触发按钮之间的距离，单位为屏幕像素
 const FONT_MENU_GAP = 6;
 
@@ -22,7 +18,7 @@ export function createTextToolbar(host: HTMLElement): void {
   toolbar.setAttribute("role", "toolbar");
   toolbar.setAttribute("aria-label", "文字配置");
   toolbar.innerHTML =
-    '<div class="text-format-group"><button type="button" id="font-menu-button" aria-label="字体" title="字体" aria-haspopup="menu" aria-expanded="false"><span id="font-menu-label">黑体</span><i data-lucide="chevron-down" aria-hidden="true"></i></button><input type="hidden" data-text-property="fontFamily" /><input type="number" data-text-property="fontSize" aria-label="浮动字号" title="字号" min="' +
+    '<div class="text-format-group"><button type="button" id="font-menu-button" popovertarget="font-menu" aria-label="字体" title="字体" aria-haspopup="menu" aria-expanded="false"><span id="font-menu-label">黑体</span><i data-lucide="chevron-down" aria-hidden="true"></i></button><input type="hidden" data-text-property="fontFamily" /><input type="number" data-text-property="fontSize" aria-label="浮动字号" title="字号" min="' +
     MIN_FONT_SIZE +
     '" max="' +
     MAX_FONT_SIZE +
@@ -59,7 +55,7 @@ function changeTextProperty(property: string, value: string): void {
   }
 }
 
-/** 打开字体菜单或设置对齐，按钮尺寸保持固定 */
+/** 对齐按钮复用属性更新入口，字体菜单由原生弹出层切换 */
 function handleToolbarClick(event: MouseEvent): void {
   if (!(event.target instanceof Element)) {
     return;
@@ -68,32 +64,27 @@ function handleToolbarClick(event: MouseEvent): void {
   if (!(button instanceof HTMLButtonElement) || button.disabled) {
     return;
   }
-  if (button.id === "font-menu-button") {
-    const menu = document.getElementById("font-menu");
-    if (menu !== null) {
-      const bounds = button.getBoundingClientRect();
-      menu.style.left =
-        Math.max(
-          TOOLBAR_MARGIN,
-          Math.min(bounds.left, window.innerWidth - FONT_MENU_WIDTH - TOOLBAR_MARGIN)
-        ) + "px";
-      menu.style.top =
-        Math.max(
-          TOOLBAR_MARGIN,
-          Math.min(
-            bounds.bottom + FONT_MENU_GAP,
-            window.innerHeight - FONT_MENU_HEIGHT - TOOLBAR_MARGIN
-          )
-        ) + "px";
-      menu.togglePopover();
-      const selected = menu.querySelector('[aria-checked="true"]');
-      if (selected instanceof HTMLButtonElement) {
-        selected.focus();
-      }
-    }
-  } else if (button.dataset.textAlign !== undefined) {
+  if (button.dataset.textAlign !== undefined) {
     changeTextProperty("textAlign", button.dataset.textAlign);
   }
+}
+
+/** 按菜单实际尺寸定位，样式调整后仍与按钮对齐且不超出窗口 */
+function positionFontMenu(menu: HTMLElement, button: HTMLElement): void {
+  const bounds = button.getBoundingClientRect();
+  menu.style.left =
+    Math.max(
+      TOOLBAR_MARGIN,
+      Math.min(bounds.left, window.innerWidth - menu.offsetWidth - TOOLBAR_MARGIN)
+    ) + "px";
+  menu.style.top =
+    Math.max(
+      TOOLBAR_MARGIN,
+      Math.min(
+        bounds.bottom + FONT_MENU_GAP,
+        window.innerHeight - menu.offsetHeight - TOOLBAR_MARGIN
+      )
+    ) + "px";
 }
 
 /** 选择字体后关闭菜单，将焦点交回字体按钮 */
@@ -160,7 +151,15 @@ function handleFontToggle(): void {
   const menu = document.getElementById("font-menu");
   const button = document.getElementById("font-menu-button");
   if (menu !== null && button !== null) {
-    button.setAttribute("aria-expanded", String(menu.matches(":popover-open")));
+    const open = menu.matches(":popover-open");
+    button.setAttribute("aria-expanded", String(open));
+    if (open) {
+      positionFontMenu(menu, button);
+      const selected = menu.querySelector('[aria-checked="true"]');
+      if (selected instanceof HTMLButtonElement) {
+        selected.focus();
+      }
+    }
   }
 }
 

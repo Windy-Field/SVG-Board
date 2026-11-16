@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { parseDocument } from "../../src/document";
 import type { Point } from "../../src/types";
 import { readFileSync } from "node:fs";
+import { selectArchive } from "./helpers";
 
 // 测试浏览器通道由运行环境指定
 const BROWSER_CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
@@ -100,7 +101,7 @@ async function runResponsiveTest(page: Page): Promise<void> {
     await page.setViewportSize({ width: width, height: 800 });
     await page.goto("http://127.0.0.1:5173/");
     await expect(page.locator(".upper-canvas")).toBeVisible();
-    await page.locator("#archive-select").selectOption({ label: "课程作业 · 提交流程" });
+    await selectArchive(page, "课程作业 · 提交流程");
     const clock = page.locator("#current-time");
     await expect(clock).toBeVisible();
     await expect(clock).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
@@ -191,7 +192,7 @@ async function runRelationshipTest(page: Page): Promise<void> {
   page.on("pageerror", collectError);
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.locator(".upper-canvas")).toBeVisible();
-  await page.locator("#archive-select").selectOption({ label: "课程作业 · 提交流程" });
+  await selectArchive(page, "课程作业 · 提交流程");
   await page.getByRole("button", { name: "适应画布", exact: true }).click();
   await page.getByRole("button", { name: "自动吸附", exact: true }).click();
   const position = await boardPosition(page, { x: 380, y: 238 });
@@ -205,7 +206,7 @@ async function runRelationshipTest(page: Page): Promise<void> {
   const flow = parseDocument(await readSavedDocument(page));
   expect(flow.shapes[2].y).toBeGreaterThan(300);
   expect(flow.shapes[7].height).not.toBe(0);
-  await page.locator("#archive-select").selectOption({ label: "几何作图 · 三角形中线" });
+  await selectArchive(page, "几何作图 · 三角形中线");
   const vertex = await boardPosition(page, { x: 290, y: 570 });
   await page.mouse.move(vertex.x, vertex.y);
   await page.mouse.down();
@@ -242,7 +243,7 @@ async function runToolsTest(page: Page): Promise<void> {
   page.on("pageerror", collectError);
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.locator(".upper-canvas")).toBeVisible();
-  await page.locator("#archive-select").selectOption({ label: "课程作业 · 提交流程" });
+  await selectArchive(page, "课程作业 · 提交流程");
   await page.locator('[data-tool-group="lines"]').focus();
   await page.keyboard.press("ArrowDown");
   await page.getByRole("button", { name: "连接线", exact: true }).click();

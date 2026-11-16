@@ -28,16 +28,6 @@
   border: 1px solid var(--color-rule);
   background: var(--color-paper);
 }
-.archive-picker select {
-  width: 210px;
-  height: 34px;
-  min-width: 0;
-  border: 1px solid var(--color-input-rule);
-  border-radius: 4px;
-  padding: 0 8px;
-  background: var(--color-paper);
-  text-overflow: ellipsis;
-}
 .file-actions {
   margin-left: 0;
   gap: 4px;
@@ -100,8 +90,8 @@
   width: 96px;
 }
 .tools {
-  /* 15 个工具共享可用高度，其余高度留给色板、分隔线和间距 */
-  --rail-control: clamp(18px, calc((100cqh - 128px) / 15), 40px);
+  /* 14 个工具共享可用高度，其余高度留给色板、分隔线和间距 */
+  --rail-control: clamp(18px, calc((100cqh - 128px) / 14), 40px);
   --rail-icon: clamp(14px, calc(var(--rail-control) - 14px), 23px);
   gap: 2px;
   padding: 8px 0;
@@ -203,9 +193,6 @@
   }
   .archive-picker {
     flex: 1;
-  }
-  .archive-picker select {
-    width: 100%;
   }
   .file-actions {
     grid-column: 3;

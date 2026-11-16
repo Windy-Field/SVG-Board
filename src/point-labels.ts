@@ -23,7 +23,6 @@ export function addPointLabel(document: BoardDocument, point: Shape): Shape | nu
   label.fontSize = point.fontSize;
   label.fontFamily = point.fontFamily;
   label.stroke = point.stroke;
-  label.locked = point.locked;
   label.opacity = point.opacity;
   label.hidden = point.hidden;
   label.textAlign = "start";

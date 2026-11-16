@@ -43,7 +43,9 @@ export function pasteShapes(document: BoardDocument, clipboard: Shape[]): string
     }
     shape.id = id;
     shape.name = shape.name + " 副本";
-    shape.locked = false;
+    if (!isDependent(shape)) {
+      shape.locked = false;
+    }
     const group = groups.get(shape.group);
     if (group !== undefined) {
       shape.group = group;
@@ -202,6 +204,7 @@ export function constructShape(
   shape.stroke = CONSTRUCTION_COLOR;
   shape.fill = "none";
   shape.relation = { kind: kind, sources: sources };
+  shape.locked = true;
   shape.layer = document.shapes.length;
   document.shapes.push(shape);
   updateRelations(document);

@@ -17,13 +17,18 @@ import {
   MAX_POLYGON_POINTS,
   MAX_BEND_RATIO
 } from "./model";
+import {
+  MAX_NAME_LENGTH,
+  MAX_TEXT_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_ROTATION,
+  MAX_STROKE_WIDTH
+} from "./model";
 
 // 项目文件大小上限，单位为字节
 export const MAX_FILE_BYTES = 8 * 1024 * 1024;
 // 浏览器自动恢复作品的存储键
 export const STORAGE_KEY = "svg-board-document-v1";
-// 单个文字对象最多保存的字符数
-const MAX_TEXT_LENGTH = 10000;
 
 /** 判断未知输入是否为普通对象，方便安全读取文件内容 */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -142,20 +147,36 @@ function readShape(value: unknown): Shape {
     relation.offsetX = readNumber(value.relation.offsetX, -MAX_COORDINATE, MAX_COORDINATE);
     relation.offsetY = readNumber(value.relation.offsetY, -MAX_COORDINATE, MAX_COORDINATE);
   }
+  if (
+    relationKind === "segment" ||
+    relationKind === "parallel" ||
+    relationKind === "perpendicular"
+  ) {
+    if (value.relation.startOffset !== undefined) {
+      relation.startOffset = readNumber(
+        value.relation.startOffset,
+        -MAX_COORDINATE,
+        MAX_COORDINATE
+      );
+    }
+    if (value.relation.endOffset !== undefined) {
+      relation.endOffset = readNumber(value.relation.endOffset, -MAX_COORDINATE, MAX_COORDINATE);
+    }
+  }
   return {
     id: readString(value.id, 80),
     kind: readKind(value.kind),
-    name: readString(value.name, 100),
+    name: readString(value.name, MAX_NAME_LENGTH),
     x: readNumber(value.x, -MAX_COORDINATE, MAX_COORDINATE),
     y: readNumber(value.y, -MAX_COORDINATE, MAX_COORDINATE),
     width: readNumber(value.width, -MAX_COORDINATE, MAX_COORDINATE),
     height: readNumber(value.height, -MAX_COORDINATE, MAX_COORDINATE),
     cornerRadius: optionalNumber(value.cornerRadius, 0, 0, MAX_CORNER_RADIUS),
     pointRadius: optionalNumber(value.pointRadius, DEFAULT_POINT_RADIUS, 1, MAX_POINT_RADIUS),
-    rotation: readNumber(value.rotation, -36000, 36000),
+    rotation: readNumber(value.rotation, -MAX_ROTATION, MAX_ROTATION),
     stroke: readColor(value.stroke),
     fill: readColor(value.fill),
-    strokeWidth: readNumber(value.strokeWidth, 0, 100),
+    strokeWidth: readNumber(value.strokeWidth, 0, MAX_STROKE_WIDTH),
     opacity: readNumber(value.opacity, 0, 1),
     dash: readBoolean(value.dash),
     text: readString(value.text, MAX_TEXT_LENGTH),
@@ -322,7 +343,7 @@ export function parseDocument(text: string): BoardDocument {
   const document: BoardDocument = {
     format: "svg-board",
     version: 1,
-    name: readString(value.name, 100),
+    name: readString(value.name, MAX_NAME_LENGTH),
     width: readNumber(value.width, MIN_BOARD_SIZE, MAX_BOARD_SIZE),
     height: readNumber(value.height, MIN_BOARD_SIZE, MAX_BOARD_SIZE),
     shapes: shapes,
@@ -337,7 +358,7 @@ export function parseDocument(text: string): BoardDocument {
     document.background = background;
   }
   if (value.description !== undefined) {
-    document.description = readString(value.description, 100000);
+    document.description = readString(value.description, MAX_DESCRIPTION_LENGTH);
   }
   if (isRecord(value.contentBounds)) {
     document.contentBounds = {

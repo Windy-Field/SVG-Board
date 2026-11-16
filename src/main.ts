@@ -3,6 +3,7 @@ import "./workspace.css";
 import "./motion.css";
 import "./selects.css";
 import "./text-toolbar.css";
+import "./archive-picker.css";
 import { BoardCanvas } from "./canvas";
 import { arrangeShapes, changeLayers, constructShape, deleteShapes, pasteShapes } from "./commands";
 import { parseDocument, STORAGE_KEY } from "./document";
@@ -22,6 +23,8 @@ import { createFabricShape } from "./fabric-shapes";
 import { addPointLabel } from "./point-labels";
 import { detachLabel } from "./shape-labels";
 import { syncLiveEntry } from "./live-entry";
+import { renderArchivePicker } from "./archive-picker";
+import { isConstructionTool, validConstructionSources } from "./construction-tools";
 
 // 提示停留时间，单位为毫秒
 const MESSAGE_DURATION = 6000;
@@ -219,9 +222,9 @@ function refreshToolButtons(tool: Tool): void {
   if (ellipses !== null && (tool === "ellipse" || tool === "circle")) {
     ellipses.setAttribute("aria-pressed", "true");
   }
-  const segment = document.querySelector('[data-action="construct-segment"]');
-  if (segment !== null) {
-    segment.setAttribute("aria-pressed", String(tool === "segment"));
+  for (const button of document.querySelectorAll('[data-action^="construct-"]')) {
+    const method = (button.getAttribute("data-action") || "").replace("construct-", "");
+    button.setAttribute("aria-pressed", String(method === tool));
   }
 }
 
@@ -365,6 +368,16 @@ async function handleClick(event: MouseEvent): Promise<void> {
     return;
   }
   const layer = event.target.closest("[data-object-select]");
+  const archive = event.target.closest("[data-archive-value]");
+  if (archive instanceof HTMLButtonElement) {
+    const id = archive.dataset.archiveValue || "";
+    saveLocal();
+    openArchive(id);
+    const menu = getElement("archive-options");
+    menu.hidePopover();
+    getElement("archive-select").focus();
+    return;
+  }
   if (layer !== null) {
     board.select(
       layer.getAttribute("data-object-select") || "",
@@ -573,14 +586,15 @@ function executeObjectAction(action: string): void {
     }
     return;
   } else if (action.startsWith("construct-")) {
-    if (
-      action === "construct-segment" &&
-      (selected.length !== 2 || selected[0].kind !== "point" || selected[1].kind !== "point")
-    ) {
-      board.setTool("segment");
+    const kind = getRelationKind(action);
+    if (!isConstructionTool(kind)) {
       return;
     }
-    const shape = constructShape(board.document, selected, getRelationKind(action));
+    if (!validConstructionSources(kind, selected)) {
+      board.setTool(kind);
+      return;
+    }
+    const shape = constructShape(board.document, selected, kind);
     addPointLabel(board.document, shape);
     board.selectedIds = [shape.id];
   } else if (
@@ -629,12 +643,6 @@ function updateProperty(control: HTMLInputElement | HTMLSelectElement): void {
 /** 处理存档切换、作品名称和对象属性变化 */
 function handleChange(event: Event): void {
   const control = event.target;
-  if (control instanceof HTMLSelectElement && control.id === "archive-select") {
-    const id = control.value;
-    saveLocal();
-    openArchive(id);
-    return;
-  }
   if (
     control instanceof HTMLTextAreaElement &&
     control.id === "description-editor" &&
@@ -726,10 +734,10 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
       distance = LARGE_MOVE_DISTANCE;
     }
     for (const shape of board.getSelectedShapes()) {
-      if (shape.locked || (isDependent(shape) && shape.kind !== "text")) {
+      if (shape.locked) {
         continue;
       }
-      if (shape.relation.kind === "label") {
+      if (isDependent(shape)) {
         shape.relation = { kind: "none", sources: [] };
       }
       if (key === "arrowleft") {
@@ -872,19 +880,7 @@ function applyReadOnlyControls(): void {
 
 /** 同步标题栏存档选择，选项值使用存档编号 */
 function renderArchives(): void {
-  const list = getElement("archive-select");
-  if (!(list instanceof HTMLSelectElement)) {
-    return;
-  }
-  list.replaceChildren();
-  for (const archive of archives.items) {
-    const option = document.createElement("option");
-    option.value = archive.id;
-    option.textContent = archive.document.name;
-    list.append(option);
-  }
-  list.value = archives.active;
-  list.title = board.document.name;
+  renderArchivePicker(archives.items, archives.active);
 }
 
 /** 切换存档后重置撤销记录，避免修改跨存档混在一起 */

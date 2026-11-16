@@ -1,11 +1,82 @@
 import Flatten from "@flatten-js/core";
-import { findShape, getBounds } from "./model";
+import { findShape, getBounds, MAX_COORDINATE } from "./model";
 import type { BoardDocument, Point, Shape } from "./types";
 
 // 小于此长度时按退化几何处理，单位为画布坐标
 const MIN_LENGTH = 0.000001;
 // 新建平行线和垂线的显示长度
 const CONSTRUCTION_LENGTH = 240;
+// 构造线可显示的最短长度，单位为画布坐标
+export const MIN_CONSTRUCTION_LENGTH = 1;
+// 构造线可显示的最长长度，与文件允许的尺寸范围一致
+export const MAX_CONSTRUCTION_LENGTH = MAX_COORDINATE;
+
+/** 判断线条是否保留几何构造关系，端点伸缩时仍需沿来源方向 */
+export function isConstructionLine(shape: Shape): boolean {
+  const kind = shape.relation.kind;
+  return kind === "segment" || kind === "parallel" || kind === "perpendicular";
+}
+
+/** 将拖动位置投影到构造线，调整一个端点的显示长度并保留来源 */
+export function resizeConstructionLine(shape: Shape, index: number, position: Point): boolean {
+  if (!isConstructionLine(shape)) {
+    return false;
+  }
+  const points = getLinePoints(shape);
+  const length = Math.hypot(shape.width, shape.height);
+  if (length < MIN_LENGTH) {
+    return false;
+  }
+  const directionX = (points[1].x - points[0].x) / length;
+  const directionY = (points[1].y - points[0].y) / length;
+  let distance =
+    (position.x - points[index].x) * directionX + (position.y - points[index].y) * directionY;
+  let offset = shape.relation.endOffset;
+  let minimumDistance = MIN_CONSTRUCTION_LENGTH - length;
+  let maximumDistance = MAX_CONSTRUCTION_LENGTH - length;
+  if (index === 0) {
+    minimumDistance = length - MAX_CONSTRUCTION_LENGTH;
+    maximumDistance = length - MIN_CONSTRUCTION_LENGTH;
+    offset = shape.relation.startOffset;
+  }
+  if (offset === undefined) {
+    offset = 0;
+  }
+  minimumDistance = Math.max(minimumDistance, -MAX_COORDINATE - offset);
+  maximumDistance = Math.min(maximumDistance, MAX_COORDINATE - offset);
+  distance = Math.max(minimumDistance, Math.min(maximumDistance, distance));
+  // 只记录沿线方向的位移，鼠标偏离直线时不会改变构造角度
+  if (index === 0) {
+    shape.relation.startOffset = offset + distance;
+  } else {
+    shape.relation.endOffset = offset + distance;
+  }
+  points[index].x = points[index].x + directionX * distance;
+  points[index].y = points[index].y + directionY * distance;
+  setLine(shape, points[0], points[1]);
+  return true;
+}
+
+/** 按属性面板给出的长度伸缩终点，起点和构造方向保持不变 */
+export function setConstructionLength(shape: Shape, length: number): boolean {
+  if (
+    !Number.isFinite(length) ||
+    length < MIN_CONSTRUCTION_LENGTH ||
+    length > MAX_CONSTRUCTION_LENGTH
+  ) {
+    return false;
+  }
+  const points = getLinePoints(shape);
+  const current = Math.hypot(shape.width, shape.height);
+  if (current < MIN_LENGTH) {
+    return false;
+  }
+  const position = {
+    x: points[0].x + ((points[1].x - points[0].x) / current) * length,
+    y: points[0].y + ((points[1].y - points[0].y) / current) * length
+  };
+  return resizeConstructionLine(shape, 1, position);
+}
 
 /** 返回对象中心，供连接线计算朝向使用 */
 export function getCenter(shape: Shape): Point {
@@ -66,6 +137,33 @@ function setLine(shape: Shape, start: Point, end: Point): void {
   shape.rotation = 0;
 }
 
+/** 在来源决定的端点上加上显示偏移，来源转动时偏移也沿新方向计算 */
+function setConstructionLine(shape: Shape, start: Point, end: Point): void {
+  let startOffset = shape.relation.startOffset;
+  let endOffset = shape.relation.endOffset;
+  if (startOffset === undefined) {
+    startOffset = 0;
+  }
+  if (endOffset === undefined) {
+    endOffset = 0;
+  }
+  const length = Math.hypot(end.x - start.x, end.y - start.y);
+  if (length < MIN_LENGTH) {
+    setLine(shape, start, end);
+    return;
+  }
+  const directionX = (end.x - start.x) / length;
+  const directionY = (end.y - start.y) / length;
+  // 来源线缩短时也保留正向线段，避免两个端点交叉后方向反转
+  endOffset = Math.max(startOffset + MIN_CONSTRUCTION_LENGTH - length, endOffset);
+  endOffset = Math.min(startOffset + MAX_CONSTRUCTION_LENGTH - length, endOffset);
+  setLine(
+    shape,
+    { x: start.x + directionX * startOffset, y: start.y + directionY * startOffset },
+    { x: end.x + directionX * endOffset, y: end.y + directionY * endOffset }
+  );
+}
+
 /** 更新一个构造对象，来源缺失或退化时返回 false，不保留错误的可见结果 */
 function updateRelation(document: BoardDocument, shape: Shape): boolean {
   const relation = shape.relation;
@@ -103,7 +201,7 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
     return true;
   }
   if (relation.kind === "segment") {
-    setLine(shape, first, second);
+    setConstructionLine(shape, first, second);
     return true;
   }
   const endpoints = getLinePoints(first);
@@ -141,7 +239,7 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
   }
   const halfX = ((directionX / length) * CONSTRUCTION_LENGTH) / 2;
   const halfY = ((directionY / length) * CONSTRUCTION_LENGTH) / 2;
-  setLine(
+  setConstructionLine(
     shape,
     { x: second.x - halfX, y: second.y - halfY },
     { x: second.x + halfX, y: second.y + halfY }

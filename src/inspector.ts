@@ -15,6 +15,13 @@ import { commandButton, getElement, refreshIcons } from "./ui";
 import type { BoardDocument, Shape } from "./types";
 import { fontOptions } from "./fonts";
 import { MAX_CORNER_RADIUS, MAX_POINT_RADIUS } from "./model";
+import { MAX_NAME_LENGTH, MAX_ROTATION, MAX_STROKE_WIDTH } from "./model";
+import {
+  isConstructionLine,
+  setConstructionLength,
+  MIN_CONSTRUCTION_LENGTH,
+  MAX_CONSTRUCTION_LENGTH
+} from "./geometry";
 
 /** 校验属性控件并更新作品，返回是否需要提交修改 */
 export function applyProperty(
@@ -88,10 +95,13 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
   if (!Number.isFinite(value)) {
     return false;
   }
-  const fixed = shape.locked || (isDependent(shape) && !isLine(shape) && shape.kind !== "text");
+  if (property === "displayLength") {
+    return setConstructionLength(shape, value);
+  }
+  const fixed = shape.locked;
   if (
     !fixed &&
-    (isLine(shape) || shape.kind === "text") &&
+    isDependent(shape) &&
     ["x", "y", "width", "height", "rotation"].includes(property)
   ) {
     shape.relation = { kind: "none", sources: [] };
@@ -249,7 +259,7 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     return;
   }
   const shape = selected[0];
-  const fixed = shape.locked || (isDependent(shape) && !isLine(shape) && shape.kind !== "text");
+  const fixed = shape.locked;
   const point = shape.kind === "point";
   let markup =
     '<section class="property-section"><div class="section-title"><h2>' +
@@ -259,7 +269,9 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     "</span></div>";
   markup =
     markup +
-    '<label class="property-field"><span>对象名称</span><input data-property="name" aria-label="对象名称" maxlength="100" value="' +
+    '<label class="property-field"><span>对象名称</span><input data-property="name" aria-label="对象名称" maxlength="' +
+    MAX_NAME_LENGTH +
+    '" value="' +
     escapeHtml(shape.name) +
     '" /></label><div class="property-grid">';
   markup = markup + numberField("X", "x", shape.x, -MAX_COORDINATE, MAX_COORDINATE, fixed);
@@ -271,7 +283,27 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     markup +
     numberField("高度", "height", shape.height, -MAX_COORDINATE, MAX_COORDINATE, fixed || point);
   markup =
-    markup + numberField("旋转角度", "rotation", shape.rotation, -36000, 36000, fixed || point);
+    markup +
+    numberField(
+      "旋转角度",
+      "rotation",
+      shape.rotation,
+      -MAX_ROTATION,
+      MAX_ROTATION,
+      fixed || point
+    );
+  if (isConstructionLine(shape)) {
+    markup =
+      markup +
+      numberField(
+        "显示长度",
+        "displayLength",
+        Math.hypot(shape.width, shape.height),
+        MIN_CONSTRUCTION_LENGTH,
+        MAX_CONSTRUCTION_LENGTH,
+        false
+      );
+  }
   markup = markup + numberField("透明度", "opacity", shape.opacity, 0, 1, false);
   markup = markup + '</div></section><section class="property-section"><h2>外观</h2>';
   markup = markup + colorField("描边 / 文字", "stroke", shape.stroke);
@@ -292,7 +324,7 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
   markup =
     markup +
     '<div class="property-grid">' +
-    numberField("线宽", "strokeWidth", shape.strokeWidth, 0, 100, false) +
+    numberField("线宽", "strokeWidth", shape.strokeWidth, 0, MAX_STROKE_WIDTH, false) +
     numberField("字号", "fontSize", shape.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, false) +
     "</div>";
   markup =

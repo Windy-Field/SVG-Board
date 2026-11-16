@@ -9,7 +9,6 @@
 }
 
 select,
-.archive-picker select,
 .property-field select {
   appearance: none;
   height: var(--select-height);
@@ -23,12 +22,6 @@ select,
   padding: 0 calc(var(--select-padding) * 2 + var(--select-arrow-size)) 0 var(--select-padding);
   line-height: 20px;
   cursor: pointer;
-}
-
-.archive-picker select {
-  font-weight: 600;
-  text-align: center;
-  padding-left: calc(var(--select-padding) * 2 + var(--select-arrow-size));
 }
 
 @media (hover: hover) {

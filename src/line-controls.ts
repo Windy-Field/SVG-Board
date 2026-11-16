@@ -1,6 +1,6 @@
 import { Control, Point } from "fabric";
 import type { FabricObject, TMat2D, TPointerEvent, Transform } from "fabric";
-import { getLinePoints } from "./geometry";
+import { getLinePoints, isConstructionLine, resizeConstructionLine } from "./geometry";
 import { updateFabricGeometry } from "./fabric-shapes";
 import { GRID_SIZE, MAX_BEND_RATIO } from "./model";
 import type { Shape, Point as BoardPoint } from "./types";
@@ -124,12 +124,20 @@ export class LineControls {
     return this.moveEndpoint(transform.target, 1, left, top);
   }
 
-  /** 直接调整关联线时解除约束，端点按网格吸附后更新原生路径 */
+  /** 锁定的构造线只沿原方向伸缩，解锁后调整端点才解除关联 */
   private moveEndpoint(object: FabricObject, index: number, left: number, top: number): boolean {
-    if (this.shape.locked || !this.canEdit()) {
+    if (!this.canEdit()) {
       return false;
     }
     const snapped = this.snapPoint({ x: left, y: top }, this.shape.id);
+    if (this.shape.locked) {
+      if (!isConstructionLine(this.shape) || !resizeConstructionLine(this.shape, index, snapped)) {
+        return false;
+      }
+      updateFabricGeometry(object, this.shape);
+      this.changed();
+      return true;
+    }
     const points = getLinePoints(this.shape);
     points[index] = snapped;
     this.shape.x = points[0].x;

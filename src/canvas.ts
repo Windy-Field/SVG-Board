@@ -3,6 +3,7 @@ import type { FabricObject, TPointerEvent, TPointerEventInfo } from "fabric";
 import { isNode } from "./document";
 import { compareLayers } from "./model";
 import { createFabricLabel, createFabricShape, updateFabricGeometry } from "./fabric-shapes";
+import { HANDLE_SIZE, SELECTION_COLOR } from "./fabric-shapes";
 import { CanvasFeedback } from "./canvas-feedback";
 import { LineControls } from "./line-controls";
 import { snapPosition } from "./snapping";
@@ -14,7 +15,7 @@ import { constructShape } from "./commands";
 import { strokeInMarquee } from "./marquee";
 import { detachLabel } from "./shape-labels";
 import { regularPoints, fitPolygon } from "./shapes";
-import { updateRelations } from "./geometry";
+import { isConstructionLine, updateRelations } from "./geometry";
 import {
   createShape,
   findShape,
@@ -35,7 +36,20 @@ import {
   MAX_FONT_SIZE
 } from "./model";
 import { MAX_POINT_RADIUS } from "./model";
-import type { BoardDocument, Bounds, Point as BoardPoint, Shape, Tool, Viewport } from "./types";
+import {
+  isConstructionTool,
+  constructionSourceCount,
+  acceptsConstructionSource
+} from "./construction-tools";
+import type {
+  BoardDocument,
+  Bounds,
+  ConstructionTool,
+  Point as BoardPoint,
+  Shape,
+  Tool,
+  Viewport
+} from "./types";
 
 // 画布缩放下限，0.15 表示 15%
 const MIN_ZOOM = 0.15;
@@ -63,6 +77,8 @@ const MIN_GRID_SPACING = 12;
 const PENCIL_WIDTH = 2;
 // 滚轮缩放灵敏度
 const WHEEL_ZOOM_SPEED = 0.005;
+// 按住左键后进入平移的等待时间，单位为毫秒
+const HOLD_PAN_DELAY = 450;
 
 /** 画布通过回调报告作品、选择和视口变化 */
 export interface CanvasCallbacks {
@@ -128,6 +144,11 @@ export class BoardCanvas {
   private waitingForClick = false;
   private finishingClick = false;
   private segmentStart = "";
+  private constructionIds: string[] = [];
+  private holdTimer = 0;
+  private holdPosition: { x: number; y: number } | null = null;
+  private holdPanning = false;
+  private constructionClick: ConstructionTool | null = null;
 
   /** 创建画布并绑定库提供的选择、变换与绘制事件 */
   constructor(host: HTMLElement, document: BoardDocument, callbacks: CanvasCallbacks) {
@@ -185,6 +206,7 @@ export class BoardCanvas {
     window.addEventListener("keyup", this.handleSpaceUp.bind(this));
     window.addEventListener("blur", this.handleWindowBlur.bind(this));
     window.addEventListener("pointermove", this.handleRightMove.bind(this), { capture: true });
+    window.addEventListener("pointermove", this.handleHoldMove.bind(this), { capture: true });
     window.addEventListener("pointerup", this.handleSelectionRelease.bind(this), { capture: true });
     const observer = new ResizeObserver(this.handleResize.bind(this));
     observer.observe(host);
@@ -250,6 +272,10 @@ export class BoardCanvas {
     }
     this.cancelGesture();
     this.tool = tool;
+    if (isConstructionTool(tool)) {
+      this.selectedIds = [];
+      this.constructionIds = [];
+    }
     this.render();
     this.callbacks.toolChanged(tool);
   }
@@ -411,12 +437,12 @@ export class BoardCanvas {
     const wasRebuilding = this.rebuilding;
     this.rebuilding = true;
     this.fabric.discardActiveObject();
-    if (this.tool === "select" || this.tool === "curve") {
+    if (this.tool === "select" || this.tool === "curve" || isConstructionTool(this.tool)) {
       const active: FabricObject[] = [];
       for (const id of this.selectedIds) {
         const object = this.objects.get(id);
         const shape = findShape(this.document, id);
-        let selectable = this.tool === "select";
+        let selectable = this.tool === "select" || isConstructionTool(this.tool);
         if (shape !== undefined && shape.kind === "curve") {
           selectable = true;
         }
@@ -430,11 +456,11 @@ export class BoardCanvas {
         const selection = new ActiveSelection(active, {
           canvas: this.fabric,
           cornerStyle: "circle",
-          cornerSize: 10,
+          cornerSize: HANDLE_SIZE,
           transparentCorners: false,
           cornerColor: "#ffffff",
-          cornerStrokeColor: "#2563eb",
-          borderColor: "#2563eb",
+          cornerStrokeColor: SELECTION_COLOR,
+          borderColor: SELECTION_COLOR,
           lockSkewingX: true,
           lockSkewingY: true,
           lockScalingFlip: true
@@ -454,7 +480,7 @@ export class BoardCanvas {
     }
     let fixed = false;
     for (const shape of this.getSelectedShapes()) {
-      if (this.readOnly || shape.locked || (isDependent(shape) && !isLine(shape))) {
+      if (this.readOnly || shape.locked) {
         fixed = true;
       }
     }
@@ -482,11 +508,7 @@ export class BoardCanvas {
       return;
     }
     if (isDependent(shape)) {
-      if (isLine(shape) || shape.kind === "text") {
-        shape.relation = { kind: "none", sources: [] };
-      } else {
-        return;
-      }
+      shape.relation = { kind: "none", sources: [] };
     }
     const center = object.getCenterPoint();
     if (object instanceof Path && (shape.kind === "arrow" || shape.kind === "connector")) {
@@ -632,10 +654,8 @@ export class BoardCanvas {
 
   /** 锁定对象和构造对象仍可选择，但不能通过控制点破坏关系 */
   private configureObject(shape: Shape, object: FabricObject): void {
-    const fixed =
-      this.readOnly ||
-      shape.locked ||
-      (isDependent(shape) && !isLine(shape) && shape.kind !== "text");
+    const fixed = this.readOnly || isConstructionTool(this.tool) || shape.locked;
+    const stretchable = !this.readOnly && this.tool === "select" && isConstructionLine(shape);
     object.set({
       selectable: this.tool === "select",
       evented: true,
@@ -646,7 +666,7 @@ export class BoardCanvas {
       lockScalingY: fixed || shape.kind === "point",
       lockSkewingX: true,
       lockSkewingY: true,
-      hasControls: !fixed && shape.kind !== "point",
+      hasControls: (!fixed || stretchable) && shape.kind !== "point",
       hoverCursor: "crosshair",
       moveCursor: "crosshair"
     });
@@ -756,6 +776,53 @@ export class BoardCanvas {
     this.callbacks.changed();
   }
 
+  /** 根据点击位置挑选几何来源，文字标签不会代替底下的点或线 */
+  private placeConstructionSource(event: TPointerEvent): void {
+    if (!isConstructionTool(this.tool)) {
+      return;
+    }
+    const position = this.fabric.getScenePoint(event);
+    const selected: Shape[] = [];
+    for (const id of this.constructionIds) {
+      const shape = findShape(this.document, id);
+      if (shape !== undefined) {
+        selected.push(shape);
+      }
+    }
+    const objects = this.fabric.getObjects();
+    objects.reverse();
+    for (const object of objects) {
+      const id = this.ids.get(object);
+      const candidate = findShape(this.document, id || "");
+      if (
+        candidate === undefined ||
+        candidate.hidden ||
+        !acceptsConstructionSource(this.tool, selected, candidate)
+      ) {
+        continue;
+      }
+      if (this.fabric.searchPossibleTargets([object], position).target === undefined) {
+        continue;
+      }
+      selected.push(candidate);
+      this.constructionIds.push(candidate.id);
+      this.selectedIds = this.constructionIds.slice();
+      if (selected.length === constructionSourceCount(this.tool)) {
+        const result = constructShape(this.document, selected, this.tool);
+        addPointLabel(this.document, result);
+        this.selectedIds = [result.id];
+        this.constructionIds = [];
+        this.render();
+        this.callbacks.changed();
+      } else {
+        this.restoreSelection();
+        this.fabric.requestRenderAll();
+        this.callbacks.selected();
+      }
+      return;
+    }
+  }
+
   /** 开始绘图或平移，选择工具的操作全部交给库 */
   private handlePointerDown(event: TPointerEventInfo<TPointerEvent>): void {
     this.clearHover();
@@ -786,8 +853,8 @@ export class BoardCanvas {
     if (this.tool === "select" || this.tool === "pencil") {
       return;
     }
-    if (this.tool === "segment") {
-      this.placeSegmentPoint(start);
+    if (isConstructionTool(this.tool)) {
+      this.constructionClick = this.tool;
       return;
     }
     if (
@@ -967,6 +1034,16 @@ export class BoardCanvas {
 
   /** 完成绘制，连接两个节点的折线保留跟随关系 */
   private handlePointerUp(event: TPointerEventInfo<TPointerEvent>): void {
+    const construction = this.constructionClick;
+    this.constructionClick = null;
+    if (construction !== null && construction === this.tool) {
+      if (construction === "segment") {
+        this.placeSegmentPoint(this.getPosition(event.e));
+      } else {
+        this.placeConstructionSource(event.e);
+      }
+      return;
+    }
     const gesture = this.gesture;
     if (gesture === null) {
       return;
@@ -974,6 +1051,7 @@ export class BoardCanvas {
     const shape = gesture.shape;
     if (shape === null) {
       this.gesture = null;
+      this.holdPanning = false;
       this.fabric.setCursor("grab");
       this.updateToolMode();
       queueMicrotask(this.restoreSelection.bind(this));
@@ -1126,6 +1204,10 @@ export class BoardCanvas {
 
   /** 取消半成品图形，避免保存不完整的连接关系 */
   cancelGesture(): void {
+    this.clearHold();
+    this.holdPanning = false;
+    this.constructionIds = [];
+    this.constructionClick = null;
     this.waitingForClick = false;
     this.finishingClick = false;
     this.segmentStart = "";
@@ -1193,6 +1275,11 @@ export class BoardCanvas {
   /** 在库开始拖动前选中整个逻辑组，首次拖动就能一起移动 */
   private handleBeforePointerDown(event: PointerEvent): void {
     this.overlapClick = null;
+    if (event.button === 0 && !this.spacePressed) {
+      this.clearHold();
+      this.holdPosition = { x: event.clientX, y: event.clientY };
+      this.holdTimer = window.setTimeout(this.startHoldPan.bind(this), HOLD_PAN_DELAY);
+    }
     if (this.tool !== "select" || this.spacePressed) {
       return;
     }
@@ -1295,6 +1382,51 @@ export class BoardCanvas {
     }
   }
 
+  /** 松开、移动超过点击容差或切换工具时取消长按等待 */
+  private clearHold(): void {
+    window.clearTimeout(this.holdTimer);
+    this.holdTimer = 0;
+    this.holdPosition = null;
+  }
+
+  /** 普通快速拖动继续绘制或移动对象，只有原地长按会进入平移 */
+  private handleHoldMove(event: PointerEvent): void {
+    const start = this.holdPosition;
+    if (
+      start !== null &&
+      Math.hypot(event.clientX - start.x, event.clientY - start.y) > CLICK_DISTANCE
+    ) {
+      this.clearHold();
+    }
+  }
+
+  /** 长按结束时撤回尚未完成的绘制，再将同一次手势用于平移 */
+  private startHoldPan(): void {
+    const start = this.holdPosition;
+    if (start === null) {
+      return;
+    }
+    const bounds = this.host.getBoundingClientRect();
+    const screen = { x: start.x - bounds.left, y: start.y - bounds.top };
+    this.cancelGesture();
+    this.rebuilding = true;
+    this.fabric.endCurrentTransform();
+    this.fabric.discardActiveObject();
+    this.rebuilding = false;
+    this.holdPanning = true;
+    this.gesture = {
+      start: { x: 0, y: 0 },
+      screen: screen,
+      view: { x: this.viewport.x, y: this.viewport.y },
+      shape: null,
+      selection: this.selectedIds.slice()
+    };
+    this.selectionClick = null;
+    this.overlapClick = null;
+    this.updateToolMode();
+    this.fabric.setCursor("grabbing");
+  }
+
   /** 点击标签时保留原外观，并改由独立文本框接收后续手势 */
   private selectShapeLabel(position: Point): boolean {
     const labels = Array.from(this.labels.entries());
@@ -1378,6 +1510,7 @@ export class BoardCanvas {
 
   /** 结束右键框选，或在多选后单击成员将其移出选区 */
   private handleSelectionRelease(event: PointerEvent): void {
+    this.clearHold();
     const overlap = this.overlapClick;
     this.overlapClick = null;
     if (overlap !== null) {
@@ -1532,7 +1665,7 @@ export class BoardCanvas {
 
   /** 原地切换交互开关，不重建正在显示的图形 */
   private updateToolMode(): void {
-    const panning = this.tool === "hand" || this.spacePressed;
+    const panning = this.tool === "hand" || this.spacePressed || this.holdPanning;
     this.fabric.selection = this.tool === "select" && !panning;
     this.fabric.skipTargetFind = panning;
     this.fabric.isDrawingMode = this.tool === "pencil" && !panning;

@@ -4,6 +4,8 @@ import { createDocument, createShape, GRID_SIZE } from "../../src/model";
 import { parseDocument } from "../../src/document";
 import { createFlowTemplate } from "../../src/templates";
 import type { BoardDocument, Point } from "../../src/types";
+import { selectArchive } from "./helpers";
+import { constructShape } from "../../src/commands";
 
 // 浏览器通道由运行环境指定，Windows 可使用 msedge
 const CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
@@ -109,7 +111,6 @@ async function checkToolbar(page: Page): Promise<void> {
   const tools = await page.locator(".tools > button[data-tool]").evaluateAll(readToolNames);
   expect(tools).toEqual([
     "选择",
-    "平移",
     "几何点",
     "线段",
     "矩形",
@@ -298,27 +299,27 @@ async function checkArchives(page: Page): Promise<void> {
   document.name = "第一份";
   await openBoard(page, document);
   await page.getByRole("button", { name: "新建画板", exact: true }).click();
-  await expect(page.locator("#archive-select option")).toHaveCount(4);
+  await expect(page.locator("#archive-options [role=option]")).toHaveCount(4);
   const name = page.getByRole("textbox", { name: "作品名称", exact: true });
   await name.fill("第二份");
   await name.press("Tab");
   await saved(page);
-  await page.locator("#archive-select").selectOption({ label: "第一份" });
+  await selectArchive(page, "第一份");
   await expect(name).toHaveValue("第一份");
   await page.getByRole("button", { name: "删除当前存档", exact: true }).click();
   await expect(page.locator("#delete-dialog")).toBeVisible();
   await page.locator("#delete-dialog").getByRole("button", { name: "取消", exact: true }).click();
-  await expect(page.locator("#archive-select option")).toHaveCount(4);
+  await expect(page.locator("#archive-options [role=option]")).toHaveCount(4);
   await page.getByRole("button", { name: "删除当前存档", exact: true }).click();
   await page
     .locator("#delete-dialog")
     .getByRole("button", { name: "删除存档", exact: true })
     .click();
-  await expect(page.locator("#archive-select option")).toHaveCount(3);
+  await expect(page.locator("#archive-options [role=option]")).toHaveCount(3);
   await expect(name).toHaveValue("第二份");
   await page.reload();
   await expect(name).toHaveValue("第二份");
-  await expect(page.locator("#archive-select option")).toHaveCount(3);
+  await expect(page.locator("#archive-options [role=option]")).toHaveCount(3);
 }
 
 /** 验证新增多边形模式、连续绘制和曲线控制点保存 */
@@ -447,11 +448,11 @@ async function checkBend(page: Page): Promise<void> {
 /** 验证重复空白存档、内置作品和删除按钮悬停状态 */
 async function checkArchiveDuplicates(page: Page): Promise<void> {
   await openBoard(page, createDocument());
-  await expect(page.locator("#archive-select option")).toHaveCount(3);
+  await expect(page.locator("#archive-options [role=option]")).toHaveCount(3);
   await expect(page.getByRole("heading", { name: "参考示例", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "新建画板", exact: true }).click();
   await page.getByRole("button", { name: "新建画板", exact: true }).click();
-  await expect(page.locator("#archive-select option")).toHaveCount(3);
+  await expect(page.locator("#archive-options [role=option]")).toHaveCount(3);
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg\+xml,/);
   const statusBox = await page.locator("#save-status").boundingBox();
   if (statusBox === null) {
@@ -585,9 +586,9 @@ async function checkLegacyDuplicates(page: Page): Promise<void> {
   }
   await page.addInitScript(seedLegacy, JSON.stringify(archives));
   await page.goto("http://127.0.0.1:5173/");
-  await expect(page.locator("#archive-select option")).toHaveCount(2);
-  await expect(page.locator("#archive-select")).toHaveValue("first");
-  await expect(page.locator('#archive-select option[value="edited"]')).toHaveCount(1);
+  await expect(page.locator("#archive-options [role=option]")).toHaveCount(2);
+  await expect(page.locator("#archive-select")).toHaveAttribute("data-value", "first");
+  await expect(page.locator('[data-archive-value="edited"]')).toHaveCount(1);
 }
 
 /** 验证线段与圆的两次点击放置，几何点和两点线段保留依赖 */
@@ -902,6 +903,199 @@ async function checkTextToolbarLayout(page: Page): Promise<void> {
   }
 }
 
+/** 长按后拖动只平移视图，快速拖动仍移动对象 */
+async function checkHoldPan(page: Page): Promise<void> {
+  const document = createDocument();
+  const rectangle = createShape("rect", { x: 300, y: 250 });
+  rectangle.width = 160;
+  rectangle.height = 100;
+  document.shapes.push(rectangle);
+  await openBoard(page, document);
+  await expect(page.getByRole("button", { name: "平移", exact: true })).toHaveCount(0);
+  const canvas = page.locator("#canvas-host");
+  const before = Number(await canvas.getAttribute("data-view-x"));
+  const center = await screen(page, { x: 380, y: 300 });
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.waitForTimeout(550);
+  await page.mouse.move(center.x + 70, center.y + 30, { steps: 8 });
+  await page.mouse.up();
+  expect(Number(await canvas.getAttribute("data-view-x"))).toBeCloseTo(before + 70, 2);
+  await page.getByRole("button", { name: "保存项目", exact: true }).click();
+  const panned = await saved(page);
+  expect(panned.shapes[0].x).toBe(300);
+  expect(panned.shapes[0].y).toBe(250);
+  const movedCenter = await screen(page, { x: 380, y: 300 });
+  await drag(page, movedCenter, { x: movedCenter.x + 35, y: movedCenter.y + 20 });
+  const moved = await saved(page);
+  expect(moved.shapes[0].x).toBeCloseTo(335, 2);
+}
+
+/** 所有几何方法先选工具再点来源，原先选来源再构造也能继续使用 */
+async function checkConstructionMethods(page: Page): Promise<void> {
+  const document = createDocument();
+  const first = createShape("point", { x: 220, y: 180 });
+  const second = createShape("point", { x: 700, y: 180 });
+  const horizontal = createShape("line", { x: 200, y: 350 });
+  horizontal.width = 500;
+  const vertical = createShape("line", { x: 450, y: 230 });
+  vertical.height = 300;
+  document.shapes.push(first, second, horizontal, vertical);
+  await openBoard(page, document);
+  const cases = [
+    { label: "中点", kind: "midpoint", points: [{ x: 300, y: 350 }] },
+    {
+      label: "交点",
+      kind: "intersection",
+      points: [
+        { x: 620, y: 350 },
+        { x: 450, y: 480 }
+      ]
+    },
+    {
+      label: "平行线",
+      kind: "parallel",
+      points: [
+        { x: 220, y: 180 },
+        { x: 620, y: 350 }
+      ]
+    },
+    {
+      label: "垂线",
+      kind: "perpendicular",
+      points: [
+        { x: 620, y: 350 },
+        { x: 700, y: 180 }
+      ]
+    }
+  ];
+  for (const item of cases) {
+    await page.getByRole("button", { name: item.label, exact: true }).click();
+    for (const point of item.points) {
+      const position = await screen(page, point);
+      await page.mouse.click(position.x, position.y);
+    }
+    const restored = await saved(page);
+    let found = false;
+    for (const shape of restored.shapes) {
+      if (shape.relation.kind === item.kind) {
+        found = true;
+        expect(shape.locked).toBe(true);
+      }
+    }
+    expect(found, item.label).toBe(true);
+  }
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  const position = await screen(page, { x: 300, y: 350 });
+  await page.mouse.click(position.x, position.y);
+  const before = await saved(page);
+  await page.getByRole("button", { name: "中点", exact: true }).click();
+  const constructed = await saved(page);
+  expect(constructed.shapes.length).toBe(before.shapes.length + 2);
+}
+
+/** 存档、字体和工具分组选项重复点击均能收起，存档菜单尺寸与触发栏一致 */
+async function checkMenuToggle(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  const trigger = page.getByRole("combobox", { name: "画图存档", exact: true });
+  await trigger.click();
+  const menu = page.getByRole("listbox", { name: "画图存档选项", exact: true });
+  await expect(menu).toBeVisible();
+  const bounds = await menu.boundingBox();
+  const button = await trigger.boundingBox();
+  if (bounds === null || button === null) {
+    throw new Error("存档菜单未显示");
+  }
+  expect(bounds.x).toBeCloseTo(button.x, 1);
+  expect(bounds.width).toBeCloseTo(button.width, 1);
+  await page.screenshot({ path: "test-results/archive-menu-desktop.png" });
+  await trigger.click();
+  await expect(menu).toBeHidden();
+  await selectArchive(page, "课程作业 · 提交流程");
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  const text = await screen(page, { x: 300, y: 110 });
+  await page.mouse.click(text.x, text.y);
+  const font = page.getByRole("button", { name: "字体", exact: true });
+  await font.click();
+  await expect(page.getByRole("menu", { name: "字体列表" })).toBeVisible();
+  await font.click();
+  await expect(page.getByRole("menu", { name: "字体列表" })).toBeHidden();
+  const group = page.locator('[data-tool-group="lines"]');
+  await group.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator("#tool-menu")).toBeVisible();
+  await group.click();
+  await expect(page.locator("#tool-menu")).toBeHidden();
+}
+
+/** 构造对象不能拖移，端点只伸缩，解锁后才允许自由修改 */
+async function checkConstructionLocks(page: Page): Promise<void> {
+  const document = createDocument();
+  const source = createShape("line", { x: 200, y: 350 });
+  source.width = 300;
+  const point = createShape("point", { x: 700, y: 350 });
+  document.shapes.push(source, point);
+  const midpoint = constructShape(document, [source], "midpoint");
+  const perpendicular = constructShape(document, [source, point], "perpendicular");
+  await openBoard(page, document);
+  await page.locator("#objects-tab").click();
+  await page.locator('[data-object-select="' + perpendicular.id + '"]').click();
+  await page.locator("#properties-tab").click();
+  await expect(page.getByRole("spinbutton", { name: "X", exact: true })).toBeDisabled();
+  await expect(page.getByRole("spinbutton", { name: "旋转角度", exact: true })).toBeDisabled();
+  const middle = await screen(page, { x: 700, y: 400 });
+  await drag(page, middle, { x: middle.x + 40, y: middle.y + 20 });
+  await page.getByRole("button", { name: "保存项目", exact: true }).click();
+  const fixed = await saved(page);
+  expect(fixed.shapes[3].x).toBe(700);
+  expect(fixed.shapes[3].height).toBe(240);
+  const end = await screen(page, { x: 700, y: 470 });
+  await drag(page, end, await screen(page, { x: 750, y: 530 }));
+  const extended = await saved(page);
+  expect(extended.shapes[3].width).toBeCloseTo(0, 4);
+  expect(extended.shapes[3].height).toBeCloseTo(300, 1);
+  expect(extended.shapes[3].relation.kind).toBe("perpendicular");
+  expect(extended.shapes[3].locked).toBe(true);
+  const length = page.getByRole("spinbutton", { name: "显示长度", exact: true });
+  await length.fill("360");
+  await length.press("Tab");
+  const resized = await saved(page);
+  expect(resized.shapes[3].height).toBeCloseTo(360, 4);
+  await page.reload();
+  await expect(page.locator(".upper-canvas")).toBeVisible();
+  await page.locator("#objects-tab").click();
+  await page.locator('[data-object-select="' + source.id + '"]').click();
+  await page.locator("#properties-tab").click();
+  const angle = page.getByRole("spinbutton", { name: "旋转角度", exact: true });
+  await angle.fill("90");
+  await angle.press("Tab");
+  const rotated = await saved(page);
+  expect(rotated.shapes[3].width).toBeCloseTo(-360, 4);
+  expect(rotated.shapes[3].height).toBeCloseTo(0, 4);
+  await page.locator("#objects-tab").click();
+  await page.locator('[data-object-select="' + midpoint.id + '"]').click();
+  await page.locator('[data-object-lock="' + midpoint.id + '"]').click();
+  await page.locator("#properties-tab").click();
+  const horizontal = page.getByRole("spinbutton", { name: "X", exact: true });
+  await expect(horizontal).toBeEnabled();
+  await horizontal.fill("400");
+  await horizontal.press("Tab");
+  const unlocked = await saved(page);
+  expect(unlocked.shapes[2].relation.kind).toBe("none");
+  expect(unlocked.shapes[2].x).toBe(400);
+  await page.locator("#objects-tab").click();
+  await page.locator('[data-object-select="' + perpendicular.id + '"]').click();
+  await page.locator('[data-object-lock="' + perpendicular.id + '"]').click();
+  await page.locator("#properties-tab").click();
+  const freeAngle = page.getByRole("spinbutton", { name: "旋转角度", exact: true });
+  await freeAngle.fill("30");
+  await freeAngle.press("Tab");
+  const free = await saved(page);
+  expect(free.shapes[3].locked).toBe(false);
+  expect(free.shapes[3].relation.kind).toBe("none");
+  expect(free.shapes[3].rotation).toBe(30);
+}
+
 /** 检查工具布局与竖排文本 */
 async function testToolbar(): Promise<void> {
   await runBrowser(checkToolbar);
@@ -1008,6 +1202,26 @@ async function testTextToolbarLayout(): Promise<void> {
   await runBrowser(checkTextToolbarLayout);
 }
 
+/** 检查长按平移和普通拖动 */
+async function testHoldPan(): Promise<void> {
+  await runBrowser(checkHoldPan);
+}
+
+/** 检查几何工具的两种构造顺序 */
+async function testConstructionMethods(): Promise<void> {
+  await runBrowser(checkConstructionMethods);
+}
+
+/** 检查菜单收起与存档菜单布局 */
+async function testMenuToggle(): Promise<void> {
+  await runBrowser(checkMenuToggle);
+}
+
+/** 检查构造锁定、长度修改、存档恢复与手动解锁 */
+async function testConstructionLocks(): Promise<void> {
+  await runBrowser(checkConstructionLocks);
+}
+
 test("工具图标对齐与纵向文本编辑", testToolbar);
 test("参考线可拖动且箭头端点吸附网格", testLines);
 test("Ctrl 多选取消与右键框选", testSelection);
@@ -1030,3 +1244,7 @@ test("对象管理隐藏仅作用目标并显示锁定", testObjectManagement);
 test("图形与线条标签可单独移动编辑", testShapeLabels);
 test("画布颜色保存与导出预览无溢出", testBackgroundAndPreview);
 test("文字配置栏独立菜单与响应式布局", testTextToolbarLayout);
+test("长按左键平移与快速拖动对象", testHoldPan);
+test("所有几何方法支持先选工具再选来源", testConstructionMethods);
+test("存档字体工具菜单重复点击收起", testMenuToggle);
+test("构造对象默认锁定且长度可调", testConstructionLocks);

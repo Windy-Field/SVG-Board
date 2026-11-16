@@ -88,6 +88,7 @@ function addSegment(document: BoardDocument, first: Shape, second: Shape): Shape
   shape.name = first.text + second.text;
   shape.fill = "none";
   shape.relation = { kind: "segment", sources: [first.id, second.id] };
+  shape.locked = true;
   shape.layer = -1;
   document.shapes.push(shape);
   return shape;
@@ -109,6 +110,7 @@ export function createGeometryTemplate(): BoardDocument {
   const midpoint = addNode(document, "point", "D", 0, 0, 0, 0, "#ffffff");
   midpoint.stroke = GEOMETRY_GREEN;
   midpoint.relation = { kind: "midpoint", sources: [base.id] };
+  midpoint.locked = true;
   const median = addSegment(document, first, midpoint);
   median.stroke = GEOMETRY_GREEN;
   median.dash = true;

@@ -48,6 +48,16 @@ export const MAX_REGULAR_SIDES = 32;
 export const MAX_POLYGON_POINTS = 1000;
 // 折线中段允许超出两端范围的最大比例
 export const MAX_BEND_RATIO = 10;
+// 作品名称与对象名称的最大字符数
+export const MAX_NAME_LENGTH = 100;
+// 单个文字对象的最大字符数
+export const MAX_TEXT_LENGTH = 10000;
+// Markdown 项目说明的最大字符数
+export const MAX_DESCRIPTION_LENGTH = 100000;
+// 对象允许的最大旋转角度绝对值，单位为度
+export const MAX_ROTATION = 36000;
+// 对象描边的最大宽度，单位为画布坐标
+export const MAX_STROKE_WIDTH = 100;
 // 新作品的说明初始模板
 const DESCRIPTION_TEMPLATE = "# 项目介绍\n\n## 用途\n\n\n## 图示说明\n\n\n## 备注\n\n";
 // 图形名称用于属性标题与新对象命名

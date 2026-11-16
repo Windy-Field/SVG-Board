@@ -5,11 +5,11 @@ import type { Shape } from "./types";
 import { curvePath, regularPoints } from "./shapes";
 
 // 控制点大小，单位为屏幕像素
-const HANDLE_SIZE = 10;
+export const HANDLE_SIZE = 10;
 // 选区与文字外侧的交互留白
 const OBJECT_PADDING = 4;
 // 选区边框和控制点描边颜色
-const SELECTION_COLOR = "#2563eb";
+export const SELECTION_COLOR = "#2563eb";
 // 箭头两翼的最小长度
 const ARROW_HEAD_SIZE = 20;
 // 箭头两翼长度相对线宽的倍率

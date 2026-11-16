@@ -8,7 +8,6 @@ import {
   Download,
   FolderOpen,
   Grid3x3,
-  Hand,
   Link2,
   Magnet,
   Maximize,
@@ -48,6 +47,8 @@ import packageInfo from "../package.json";
 import { mountBrandIcon } from "./branding";
 import { MIN_POLYGON_SIDES, MAX_REGULAR_SIDES, DEFAULT_POLYGON_SIDES } from "./model";
 import { AlignLeft, AlignCenter, AlignRight, ChevronDown } from "lucide";
+import { setupArchivePicker } from "./archive-picker";
+import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, MAX_DESCRIPTION_LENGTH } from "./model";
 
 // 日期时间刷新间隔，单位为毫秒
 const CLOCK_INTERVAL = 1000;
@@ -65,14 +66,6 @@ const CLOCK_FORMAT = new Intl.DateTimeFormat("sv-SE", {
   hourCycle: "h23"
 });
 
-/** 更新左下角的北京时间，使用 time 元素同时保留机器可读的时间 */
-function updateClock(): void {
-  const element = getElement("current-time");
-  const now = new Date();
-  element.textContent = CLOCK_FORMAT.format(now);
-  element.setAttribute("datetime", now.toISOString());
-}
-
 /** 工具栏按钮的配置，图标名与 Lucide 的公开名称一致 */
 interface ToolDefinition {
   tool: Tool;
@@ -80,9 +73,9 @@ interface ToolDefinition {
   icon: string;
 }
 
+// 左侧工具栏的顺序、名称与图标，分组后的工具只保留一个入口
 const TOOLS: ToolDefinition[] = [
   { tool: "select", label: "选择", icon: "mouse-pointer-2" },
-  { tool: "hand", label: "平移", icon: "hand" },
   { tool: "point", label: "几何点", icon: "dot" },
   { tool: "line", label: "线段", icon: "slash" },
   { tool: "rect", label: "矩形", icon: "rectangle-horizontal" },
@@ -95,6 +88,14 @@ const TOOLS: ToolDefinition[] = [
   { tool: "text", label: "文字", icon: "type" },
   { tool: "vertical-text", label: "纵向文本框", icon: "text-cursor-input" }
 ];
+
+/** 更新左下角的北京时间，使用 time 元素同时保留机器可读的时间 */
+function updateClock(): void {
+  const element = getElement("current-time");
+  const now = new Date();
+  element.textContent = CLOCK_FORMAT.format(now);
+  element.setAttribute("datetime", now.toISOString());
+}
 
 /** 返回静态图标标记，传入名称仅来自本模块配置 */
 function icon(name: string): string {
@@ -147,7 +148,6 @@ export function refreshIcons(): void {
       Download: Download,
       FolderOpen: FolderOpen,
       Grid3x3: Grid3x3,
-      Hand: Hand,
       Link2: Link2,
       Magnet: Magnet,
       Maximize: Maximize,
@@ -270,8 +270,8 @@ export function mountInterface(): void {
   app.innerHTML = `
     <header class="topbar">
       <div class="brand"><span class="brand-symbol">${icon("pen-tool")}</span><h1>SVG<span>Board</span></h1></div>
-      <div class="document-heading"><input id="document-name" aria-label="作品名称" maxlength="100" /><span id="save-status" role="status"></span></div>
-      <div class="header-workspace"><div class="archive-picker"><select id="archive-select" aria-label="画图存档"></select></div><button type="button" class="icon-button" id="readonly-button" data-action="readonly" aria-label="只读模式" title="只读模式" aria-pressed="false">${icon("lock-keyhole")}</button><button type="button" class="icon-button" id="snap-button" data-action="snap" aria-label="自动吸附" title="自动吸附" aria-pressed="true">${icon("magnet")}</button><button type="button" class="icon-button" id="grid-button" data-action="grid" aria-label="显示网格" title="显示网格" aria-pressed="true">${icon("grid-3x3")}</button>${commandButton("undo", "撤销", "undo-2")}${commandButton("redo", "重做", "redo-2")}</div>
+      <div class="document-heading"><input id="document-name" aria-label="作品名称" maxlength="${MAX_NAME_LENGTH}" /><span id="save-status" role="status"></span></div>
+      <div class="header-workspace"><div class="archive-picker"><button type="button" id="archive-select" role="combobox" aria-label="画图存档" aria-haspopup="listbox" aria-expanded="false" aria-controls="archive-options" popovertarget="archive-options"><span id="archive-label"></span>${icon("chevron-down")}</button></div><button type="button" class="icon-button" id="readonly-button" data-action="readonly" aria-label="只读模式" title="只读模式" aria-pressed="false">${icon("lock-keyhole")}</button><button type="button" class="icon-button" id="snap-button" data-action="snap" aria-label="自动吸附" title="自动吸附" aria-pressed="true">${icon("magnet")}</button><button type="button" class="icon-button" id="grid-button" data-action="grid" aria-label="显示网格" title="显示网格" aria-pressed="true">${icon("grid-3x3")}</button>${commandButton("undo", "撤销", "undo-2")}${commandButton("redo", "重做", "redo-2")}</div>
       <div class="file-actions">
         ${commandButton("new", "新建画板", "plus")}
         ${commandButton("open", "打开作品", "folder-open")}
@@ -287,7 +287,7 @@ export function mountInterface(): void {
       <aside class="inspector" id="inspector" aria-label="说明">
         <div class="inspector-tabs"><button type="button" id="properties-tab" class="active" data-action="tab-properties" aria-pressed="true">属性</button><button type="button" id="objects-tab" data-action="tab-objects" aria-pressed="false">对象管理 <span id="object-manager-count">0</span></button><button type="button" id="description-tab" data-action="tab-description" aria-pressed="false">说明</button></div>
         <div id="properties-panel"></div><div id="objects-panel" hidden><section class="property-section"><div id="selected-object-management"></div></section><div id="object-list"></div></div>
-        <section id="description-panel" class="description-panel" hidden><div class="section-title"><h2>项目介绍</h2><button type="button" class="text-button" data-action="description-edit">编辑</button></div><textarea id="description-editor" aria-label="项目介绍 Markdown" rows="10" hidden></textarea><article id="description-preview" class="markdown-preview"></article></section>
+        <section id="description-panel" class="description-panel" hidden><div class="section-title"><h2>项目介绍</h2><button type="button" class="text-button" data-action="description-edit">编辑</button></div><textarea id="description-editor" aria-label="项目介绍 Markdown" rows="10" maxlength="${MAX_DESCRIPTION_LENGTH}" hidden></textarea><article id="description-preview" class="markdown-preview"></article></section>
         <p id="construction-status" class="relationship-status" role="status"></p>
         <div class="inspector-foot">SVG-Board</div>
       </aside>
@@ -295,9 +295,10 @@ export function mountInterface(): void {
     <footer class="statusbar"><div class="status-left"><div class="release-info"><time id="current-time" aria-label="当前北京时间" title="北京时间（Asia/Shanghai）"></time><span id="app-version" aria-label="应用版本">v${packageInfo.version}</span></div><div class="object-status"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div></div><span id="board-size" class="board-size">1200 × 800</span><div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div></footer>
     <div id="message" class="message" role="status" hidden></div>
     <input id="file-input" type="file" accept=".json,.svg" hidden />
-    <dialog id="text-dialog"><form id="text-form"><div class="dialog-heading"><h2>编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="10000"></textarea><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>
+    <dialog id="text-dialog"><form id="text-form"><div class="dialog-heading"><h2>编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="${MAX_TEXT_LENGTH}"></textarea><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>
     <dialog id="delete-dialog"><div class="dialog-heading"><h2>删除存档</h2>${commandButton("cancel-delete", "取消删除", "x")}</div><p id="delete-archive-name"></p><p>此操作无法撤销</p><div class="dialog-actions"><button type="button" data-action="cancel-delete">取消</button><button type="button" class="danger-button" data-action="confirm-delete">删除存档</button></div></dialog>
     <div id="tool-menu" class="tool-menu" popover="manual" role="group" aria-label="工具模式"></div>
+    <div id="archive-options" class="archive-options" popover="auto" role="listbox" aria-label="画图存档选项"></div>
     <dialog id="polygon-dialog"><form id="polygon-form"><div class="dialog-heading"><h2>正多边形</h2>${commandButton("close-polygon", "关闭多边形设置", "x")}</div><label for="polygon-sides">边数</label><input id="polygon-sides" type="number" min="${MIN_POLYGON_SIDES}" max="${MAX_REGULAR_SIDES}" step="1" value="${DEFAULT_POLYGON_SIDES}" /><div class="dialog-actions"><button type="submit" class="primary-button">开始绘制</button></div></form></dialog>
     <dialog id="export-dialog"><div class="dialog-heading"><h2>导出作品</h2>${commandButton("close-export", "关闭导出", "x")}</div><div id="export-preview" class="export-preview"></div><p id="export-error" role="status"></p><div class="dialog-actions"><button type="button" data-action="export-project">导出项目</button><button type="button" data-action="export-svg">导出 SVG</button><button type="button" class="primary-button" data-action="export-png">导出 PNG</button></div></dialog>
   `;
@@ -307,10 +308,14 @@ export function mountInterface(): void {
   updateClock();
   window.setInterval(updateClock, CLOCK_INTERVAL);
   setupToolGroups();
+  setupArchivePicker();
 }
 
 /** 验证工具名，仅将已知工具交给画布 */
 export function isTool(value: string): value is Tool {
+  if (value === "hand") {
+    return true;
+  }
   if (isGroupedTool(value)) {
     return true;
   }

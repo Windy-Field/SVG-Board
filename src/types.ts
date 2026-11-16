@@ -18,7 +18,9 @@ export type Tool =
   | "square"
   | "custom-polygon"
   | "circle"
-  | "segment";
+  | ConstructionTool;
+export type ConstructionTool =
+  "segment" | "midpoint" | "intersection" | "parallel" | "perpendicular";
 export type RelationKind =
   | "none"
   | "connector"
@@ -41,6 +43,8 @@ export interface Relation {
   sources: string[];
   offsetX?: number;
   offsetY?: number;
+  startOffset?: number;
+  endOffset?: number;
 }
 
 /** 保存一个可编辑对象，线段使用起点位置与带正负号的宽高表示方向 */

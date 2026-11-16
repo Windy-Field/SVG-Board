@@ -6,6 +6,8 @@
   --text-font-width: 112px;
   /* 字体弹出菜单宽度 */
   --text-menu-width: 192px;
+  /* 字体弹出菜单的最大高度 */
+  --text-menu-height: 280px;
 }
 
 .text-toolbar {
@@ -83,7 +85,7 @@
   position: fixed;
   margin: 0;
   width: var(--text-menu-width);
-  max-height: 280px;
+  max-height: var(--text-menu-height);
   overflow: auto;
   padding: 5px;
   border: 1px solid var(--color-rule);

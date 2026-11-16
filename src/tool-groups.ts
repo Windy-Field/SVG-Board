@@ -2,10 +2,15 @@ import { createElement } from "lucide";
 import { TOOL_MODES } from "./tool-definitions";
 // 长按展开工具菜单的等待时间，单位为毫秒
 const LONG_PRESS_DELAY = 350;
+// 分组菜单与工具按钮的水平距离，单位为屏幕像素
+const MENU_GAP = 8;
+// 菜单底部预留的空间，单位为屏幕像素
+const MENU_BOTTOM_SPACE = 150;
 let timer = 0;
 let anchor: HTMLButtonElement | null = null;
 let heldPointer = -1;
 let menuOpen = false;
+let closedTrigger: HTMLButtonElement | null = null;
 
 /** 绑定长按工具分组，短按继续使用当前模式，键盘下箭头也能展开 */
 export function setupToolGroups(): void {
@@ -28,6 +33,12 @@ function handleDown(event: PointerEvent): void {
     }
     return;
   }
+  if (menuOpen && anchor === button) {
+    closeMenu();
+    closedTrigger = button;
+    return;
+  }
+  closedTrigger = null;
   anchor = button;
   heldPointer = event.pointerId;
   window.clearTimeout(timer);
@@ -62,8 +73,8 @@ function openMenu(): void {
     menu.append(button);
   }
   const bounds = anchor.getBoundingClientRect();
-  menu.style.left = bounds.right + 8 + "px";
-  menu.style.top = Math.min(bounds.top, window.innerHeight - 150) + "px";
+  menu.style.left = bounds.right + MENU_GAP + "px";
+  menu.style.top = Math.min(bounds.top, window.innerHeight - MENU_BOTTOM_SPACE) + "px";
   menu.showPopover();
   menuOpen = true;
   anchor.setAttribute("aria-expanded", "true");
@@ -87,6 +98,12 @@ function handleRelease(event: PointerEvent): void {
 /** 模式选择后替换分组按钮的默认模式，保留右下角分组标记 */
 function handleMenuClick(event: MouseEvent): void {
   if (!(event.target instanceof Element)) {
+    return;
+  }
+  if (closedTrigger !== null && event.target.closest("[data-tool-group]") === closedTrigger) {
+    closedTrigger = null;
+    event.stopImmediatePropagation();
+    event.preventDefault();
     return;
   }
   const mode = event.target.closest("[data-group-mode]");

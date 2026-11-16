@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { constructShape, deleteShapes, pasteShapes } from "../src/commands";
 import { parseDocument } from "../src/document";
-import { updateRelations } from "../src/geometry";
+import {
+  getLinePoints,
+  resizeConstructionLine,
+  setConstructionLength,
+  updateRelations
+} from "../src/geometry";
 import { createDocument, createShape, History } from "../src/model";
 import { createFlowTemplate, createGeometryTemplate } from "../src/templates";
 
@@ -120,3 +125,98 @@ function testInvalidDocument(): void {
   assert.throws(parseInvalid);
 }
 test("拒绝损坏的构造来源", testInvalidDocument);
+
+/** 五种几何构造默认锁定，复制后仍保持锁定和来源关系 */
+function testConstructionLocks(): void {
+  const document = createDocument();
+  const first = createShape("point", { x: 100, y: 100 });
+  const second = createShape("point", { x: 300, y: 100 });
+  const vertical = createShape("line", { x: 200, y: 0 });
+  vertical.height = 200;
+  document.shapes.push(first, second, vertical);
+  const segment = constructShape(document, [first, second], "segment");
+  const midpoint = constructShape(document, [segment], "midpoint");
+  const intersection = constructShape(document, [segment, vertical], "intersection");
+  const parallel = constructShape(document, [segment, first], "parallel");
+  const perpendicular = constructShape(document, [segment, second], "perpendicular");
+  const results = [segment, midpoint, intersection, parallel, perpendicular];
+  for (const shape of results) {
+    assert.equal(shape.locked, true);
+  }
+  const copies = pasteShapes(document, results);
+  for (const shape of document.shapes) {
+    if (copies.includes(shape.id)) {
+      assert.equal(shape.locked, true);
+    }
+  }
+}
+test("几何构造及副本默认锁定", testConstructionLocks);
+
+/** 锁定构造线沿原方向伸缩，来源转动后保持长度、角度和后续中点联动 */
+function testConstructionLength(): void {
+  const document = createDocument();
+  const source = createShape("line", { x: 100, y: 200 });
+  source.width = 400;
+  const point = createShape("point", { x: 600, y: 300 });
+  document.shapes.push(source, point);
+  const line = constructShape(document, [source, point], "perpendicular");
+  const midpoint = constructShape(document, [line], "midpoint");
+  assert.equal(resizeConstructionLine(line, 1, { x: 700, y: 500 }), true);
+  updateRelations(document);
+  assert.equal(line.x, 600);
+  assert.equal(line.width, 0);
+  assert.equal(line.height, 320);
+  assert.equal(midpoint.y, 340);
+  const restored = parseDocument(JSON.stringify(document));
+  assert.equal(restored.shapes[2].relation.endOffset, 80);
+  source.rotation = 90;
+  point.x = 650;
+  updateRelations(document);
+  assert.ok(Math.abs(line.width + 320) < 0.000001);
+  assert.ok(Math.abs(line.height) < 0.000001);
+  assert.ok(Math.abs(midpoint.x - 610) < 0.000001);
+  assert.equal(setConstructionLength(line, 180), true);
+  updateRelations(document);
+  assert.ok(Math.abs(Math.hypot(line.width, line.height) - 180) < 0.000001);
+  assert.equal(line.relation.kind, "perpendicular");
+  assert.equal(line.locked, true);
+  const history = new History();
+  history.push(document);
+  setConstructionLength(line, 260);
+  history.push(document);
+  const undone = history.undo();
+  if (undone === null) {
+    throw new Error("缺少伸缩前的历史记录");
+  }
+  const previous = parseDocument(undone);
+  updateRelations(previous);
+  assert.ok(
+    Math.abs(Math.hypot(previous.shapes[2].width, previous.shapes[2].height) - 180) < 0.000001
+  );
+}
+test("构造线伸缩保存与来源转动联动", testConstructionLength);
+
+/** 两点线段缩短后来源仍可移动，端点不会因拖动越界而翻转 */
+function testSegmentExtent(): void {
+  const document = createDocument();
+  const first = createShape("point", { x: 100, y: 100 });
+  const second = createShape("point", { x: 400, y: 100 });
+  document.shapes.push(first, second);
+  const segment = constructShape(document, [first, second], "segment");
+  resizeConstructionLine(segment, 0, { x: 150, y: 300 });
+  updateRelations(document);
+  assert.equal(segment.x, 150);
+  assert.equal(segment.y, 100);
+  assert.equal(segment.width, 250);
+  second.x = 100;
+  second.y = 400;
+  updateRelations(document);
+  const endpoints = getLinePoints(segment);
+  assert.equal(endpoints[0].x, 100);
+  assert.equal(endpoints[0].y, 150);
+  assert.equal(endpoints[1].y, 400);
+  resizeConstructionLine(segment, 1, { x: 100, y: -500 });
+  assert.equal(segment.height, 1);
+  assert.equal(segment.relation.kind, "segment");
+}
+test("两点线段伸缩保留方向及来源", testSegmentExtent);
