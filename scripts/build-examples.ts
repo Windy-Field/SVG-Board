@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import { createFlowTemplate, createGeometryTemplate } from "../src/templates";
-import { parseDocument } from "../src/document";
-import type { BoardDocument } from "../src/types";
+import { createFlowTemplate, createGeometryTemplate } from "../src/objects/templates";
+import { parseDocument } from "../src/storage/document";
+import type { BoardDocument } from "../src/core/types";
 
 // 两份参考作品的输出目录
 const OUTPUT_FOLDER = new URL("../examples/", import.meta.url);

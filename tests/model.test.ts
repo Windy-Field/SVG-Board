@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { constructShape, deleteShapes, pasteShapes } from "../src/commands";
-import { parseDocument } from "../src/document";
+import { constructShape, deleteShapes, pasteShapes } from "../src/core/commands";
+import { parseDocument } from "../src/storage/document";
 import {
   getLinePoints,
   resizeConstructionLine,
   setConstructionLength,
   updateRelations
-} from "../src/geometry";
-import { createDocument, createShape, History } from "../src/model";
-import { createFlowTemplate, createGeometryTemplate } from "../src/templates";
+} from "../src/geometry/geometry";
+import { createDocument, createShape, History } from "../src/core/model";
+import { createFlowTemplate, createGeometryTemplate } from "../src/objects/templates";
 
 /** 验证两个模板都符合保存格式，重新打开后不丢失对象和关系 */
 function testRoundTrip(): void {

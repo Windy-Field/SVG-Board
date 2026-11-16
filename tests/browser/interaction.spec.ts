@@ -1,8 +1,8 @@
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { parseDocument, STORAGE_KEY } from "../../src/document";
-import { createDocument, createShape } from "../../src/model";
-import type { BoardDocument, Point, Shape } from "../../src/types";
+import { parseDocument, STORAGE_KEY } from "../../src/storage/document";
+import { createDocument, createShape } from "../../src/core/model";
+import type { BoardDocument, Point, Shape } from "../../src/core/types";
 
 // 测试浏览器通道由运行环境指定
 const BROWSER_CHANNEL = process.env.PLAYWRIGHT_CHANNEL;

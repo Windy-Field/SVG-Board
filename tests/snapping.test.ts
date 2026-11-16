@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createDocument, createShape } from "../src/model";
-import { snapPosition } from "../src/snapping";
-import { archiveContent } from "../src/archive-content";
-import { createGeometryTemplate } from "../src/templates";
+import { createDocument, createShape } from "../src/core/model";
+import { snapPosition } from "../src/geometry/snapping";
+import { archiveContent } from "../src/storage/archive-content";
+import { createGeometryTemplate } from "../src/objects/templates";
 
 /** 交点坐标不在网格上时仍保留准确交点，隐藏对象不参与 */
 function testIntersectionPriority(): void {

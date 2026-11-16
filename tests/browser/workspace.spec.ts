@@ -1,11 +1,11 @@
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { createDocument, createShape, GRID_SIZE } from "../../src/model";
-import { parseDocument } from "../../src/document";
-import { createFlowTemplate } from "../../src/templates";
-import type { BoardDocument, Point } from "../../src/types";
+import { createDocument, createShape, GRID_SIZE } from "../../src/core/model";
+import { parseDocument } from "../../src/storage/document";
+import { createFlowTemplate } from "../../src/objects/templates";
+import type { BoardDocument, Point } from "../../src/core/types";
 import { selectArchive } from "./helpers";
-import { constructShape } from "../../src/commands";
+import { constructShape } from "../../src/core/commands";
 
 // 浏览器通道由运行环境指定，Windows 可使用 msedge
 const CHANNEL = process.env.PLAYWRIGHT_CHANNEL;

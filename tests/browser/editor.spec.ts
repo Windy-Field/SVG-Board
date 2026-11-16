@@ -1,7 +1,7 @@
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { parseDocument } from "../../src/document";
-import type { Point } from "../../src/types";
+import { parseDocument } from "../../src/storage/document";
+import type { Point } from "../../src/core/types";
 import { readFileSync } from "node:fs";
 import { selectArchive } from "./helpers";
 
