@@ -1,16 +1,16 @@
 # Third-Party Notices
 
-The browser application uses Fabric.js, Flatten.js (including interval-tree), Lucide, Marked, and DOMPurify. The application does not bundle Node.js-only canvas or jsdom runtimes in the browser. Development dependency licenses remain available in their installed packages and lockfile
+项目使用 Fabric.js、Flatten.js（包括 interval-tree）、Lucide、Marked、DOMPurify，以及下列数学计算库
 
-新增数学功能复用以下项目，发布包在 `licenses/dependencies/` 保留运行时依赖的许可和署名原文
+数学绘图使用以下项目。发布包在 `licenses/dependencies/` 中保留运行时依赖的许可和署名原文
 
 - mathjs 15.2.0，Apache-2.0，https://github.com/josdejong/mathjs，用于表达式解析、编译与求值
 - ml-regression-polynomial 4.0.0，MIT，https://github.com/mljs/regression-polynomial，用于线性和多项式最小二乘拟合
-- d3-array 3.2.5，ISC，https://github.com/d3/d3-array，用于缩放后的坐标轴刻度和比例尺
+- d3-array 3.2.5，ISC，https://github.com/d3/d3-array，用于计算坐标轴刻度和比例尺，使它们随缩放调整
 
-Marked 18.2.0: https://github.com/markedjs/marked (MIT, with Markdown BSD notices). The complete license is included in `licenses/marked-LICENSE` in built distributions and in `node_modules/marked/LICENSE` during development
+Marked 18.2.0 用于解析 Markdown，采用 MIT 许可，并包含 Markdown 的 BSD 声明。项目地址：[https://github.com/markedjs/marked](https://github.com/markedjs/marked)。完整许可位于发布包的 `licenses/marked-LICENSE` 和开发目录的 `node_modules/marked/LICENSE`
 
-DOMPurify 3.4.18: https://github.com/cure53/DOMPurify (Apache-2.0 OR MPL-2.0). This distribution uses Apache-2.0. The complete license is included in `licenses/dompurify-LICENSE` in built distributions and in `node_modules/dompurify/LICENSE` during development
+DOMPurify 3.4.18 用于过滤 Markdown 预览中的不安全内容，可选用 Apache-2.0 或 MPL-2.0 许可，本项目采用 Apache-2.0。项目地址：[https://github.com/cure53/DOMPurify](https://github.com/cure53/DOMPurify)。完整许可位于发布包的 `licenses/dompurify-LICENSE` 和开发目录的 `node_modules/dompurify/LICENSE`
 
 ## Fabric.js 7.4.0
 
