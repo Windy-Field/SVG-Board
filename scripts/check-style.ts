@@ -1,13 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { parse } from "parse5";
+import type { DefaultTreeAdapterTypes } from "parse5";
+import { pathToFileURL } from "node:url";
 
 // 检查命令从项目根目录运行
 const ROOT = process.cwd();
 // 需要遍历的正式代码目录
-const SOURCES = ["src", "scripts", "tests"];
-// 需要额外检查的根目录配置文件
-const CONFIG_FILES = ["vite.config.ts", "playwright.config.ts"];
+const SOURCES = ["src", "scripts", "tests", "config"];
+// 需要额外检查内联脚本的根目录 HTML 入口
+const HTML_FILES = ["index.html", "editor.html"];
 // 所有被禁用的复合赋值符号
 const ASSIGNMENT_OPERATORS = new Set([
   ts.SyntaxKind.PlusEqualsToken,
@@ -29,8 +32,8 @@ const ASSIGNMENT_OPERATORS = new Set([
 let failures = 0;
 
 /** 收集正式代码文件，跳过构建结果与第三方依赖 */
-function collectFiles(folder) {
-  const files = [];
+function collectFiles(folder: string): string[] {
+  const files: string[] = [];
   if (!fs.existsSync(folder)) {
     return files;
   }
@@ -41,7 +44,7 @@ function collectFiles(folder) {
       for (const child of children) {
         files.push(child);
       }
-    } else if (/\.(ts|js|mjs)$/.test(name)) {
+    } else if (/\.(ts|js|mjs|css)$/.test(name)) {
       files.push(name);
     }
   }
@@ -49,14 +52,14 @@ function collectFiles(folder) {
 }
 
 /** 记录违规节点的位置，返回非零退出码供构建或提交前检查使用 */
-function report(source, node, message) {
+function report(source: ts.SourceFile, node: ts.Node, message: string): void {
   const location = source.getLineAndCharacterOfPosition(node.getStart(source));
   console.error(source.fileName + ":" + (location.line + 1) + " " + message);
   failures = failures + 1;
 }
 
 /** 检查函数上方是否有中文功能说明，不接受只有英文或代码复述的空注释 */
-function checkComment(source, node) {
+function checkComment(source: ts.SourceFile, node: ts.Node): void {
   const ranges = ts.getLeadingCommentRanges(source.text, node.getFullStart());
   let found = false;
   if (ranges !== undefined) {
@@ -76,7 +79,7 @@ function checkComment(source, node) {
 }
 
 /** 遍历语法树检查明确禁止的写法，字符串里的符号不会被误判 */
-function checkNode(source, node) {
+function checkNode(source: ts.SourceFile, node: ts.Node): void {
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
     report(source, node, "不允许箭头函数或函数表达式，请使用命名函数");
   }
@@ -115,6 +118,7 @@ function checkNode(source, node) {
   if (
     node.kind === ts.SyntaxKind.AnyKeyword ||
     ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
     ts.isNonNullExpression(node)
   ) {
     report(source, node, "不允许用 any、类型断言或非空断言绕过检查");
@@ -128,32 +132,107 @@ function checkNode(source, node) {
     checkComment(source, node);
   }
   /** 递归检查子节点，显式命名回调便于定位检查过程 */
-  function visitChild(child) {
+  function visitChild(child: ts.Node): void {
     checkNode(source, child);
   }
   ts.forEachChild(node, visitChild);
 }
 
-const files = [];
-for (const folder of SOURCES) {
-  for (const file of collectFiles(path.join(ROOT, folder))) {
-    files.push(file);
+/** 用 TypeScript 扫描器检查所有普通注释，不把字符串内容误当注释 */
+function checkAllComments(source: ts.SourceFile): void {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    false,
+    ts.LanguageVariant.Standard,
+    source.text
+  );
+  let kind = scanner.scan();
+  while (kind !== ts.SyntaxKind.EndOfFileToken) {
+    if (
+      kind === ts.SyntaxKind.SingleLineCommentTrivia ||
+      kind === ts.SyntaxKind.MultiLineCommentTrivia
+    ) {
+      const text = scanner.getTokenText();
+      if (/[。.]\s*(\*\/)?$/.test(text)) {
+        const location = source.getLineAndCharacterOfPosition(scanner.getTokenPos());
+        console.error(source.fileName + ":" + (location.line + 1) + " 注释末尾不能有句号");
+        failures = failures + 1;
+      }
+      if (/@ts-(ignore|nocheck|expect-error)\b/.test(text)) {
+        console.error(source.fileName + " 不允许忽略类型检查");
+        failures = failures + 1;
+      }
+    }
+    kind = scanner.scan();
   }
 }
-for (const file of CONFIG_FILES) {
-  files.push(path.join(ROOT, file));
-}
-for (const file of files) {
-  const text = fs.readFileSync(file, "utf8");
+
+/** 检查一份脚本源码，测试也可传入代码片段验证规则 */
+export function checkSource(file: string, text: string): number {
+  const before = failures;
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   checkNode(source, source);
-  if (/^\s*\/\/\s*@ts-(ignore|nocheck)/m.test(text)) {
-    console.error(file + " 不允许忽略类型检查");
-    failures = failures + 1;
+  checkAllComments(source);
+  return failures - before;
+}
+
+/** 检查整份 HTML 中的内联脚本，页面结构由 parse5 解析 */
+export function checkHtml(file: string, html: string): number {
+  const before = failures;
+  const document = parse(html, { sourceCodeLocationInfo: true });
+  checkHtmlNode(file, html, document);
+  return failures - before;
+}
+
+/** 使用 HTML 解析器提取内联脚本，保留原行号以便定位问题 */
+function checkHtmlNode(file: string, html: string, node: DefaultTreeAdapterTypes.Node): void {
+  if ("tagName" in node && node.tagName === "script") {
+    const location = node.sourceCodeLocation;
+    if (
+      location !== undefined &&
+      location !== null &&
+      location.startTag !== undefined &&
+      location.endTag !== undefined
+    ) {
+      const start = location.startTag.endOffset;
+      const end = location.endTag.startOffset;
+      const prefix = html.slice(0, start).replace(/[^\n]/g, " ");
+      checkSource(file, prefix + html.slice(start, end));
+    }
+  }
+  if ("childNodes" in node) {
+    for (const child of node.childNodes) {
+      checkHtmlNode(file, html, child);
+    }
   }
 }
-if (failures > 0) {
-  process.exitCode = 1;
-} else {
-  console.log("代码风格检查通过");
+
+/** 检查项目全部正式代码和 HTML 启动脚本，生成目录不参与 */
+function checkProject(): void {
+  for (const folder of SOURCES) {
+    for (const file of collectFiles(path.join(ROOT, folder))) {
+      const text = fs.readFileSync(file, "utf8");
+      if (file.endsWith(".css")) {
+        const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+        checkAllComments(source);
+      } else {
+        checkSource(file, text);
+      }
+    }
+  }
+  for (const filename of HTML_FILES) {
+    const file = path.join(ROOT, filename);
+    const html = fs.readFileSync(file, "utf8");
+    checkHtml(file, html);
+  }
+  if (failures > 0) {
+    process.exitCode = 1;
+  } else {
+    console.log("代码风格检查通过");
+  }
+}
+
+const entry = process.argv[1];
+if (entry !== undefined && pathToFileURL(path.resolve(entry)).href === import.meta.url) {
+  checkProject();
 }

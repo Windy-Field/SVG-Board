@@ -1,5 +1,6 @@
 import { build, createServer } from "vite";
-import { execFileSync } from "node:child_process";
+import { copyNotices } from "./copy-notices";
+import { VITE_CONFIG } from "../config/paths";
 import type { ViteDevServer } from "vite";
 import type { RollupWatcher, RollupWatcherEvent } from "rollup";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -29,7 +30,7 @@ function configureRuntime(server: ViteDevServer): void {
 /** 离线文件重建后同步发布入口与许可 */
 function handleBuild(event: RollupWatcherEvent): void {
   if (event.code === "END") {
-    execFileSync(process.execPath, ["scripts/copy-notices.mjs"], { stdio: "inherit" });
+    copyNotices();
   }
   if (event.code === "ERROR") {
     console.error(event.error);
@@ -57,12 +58,13 @@ async function startDevelopment(): Promise<void> {
       port = requested;
     }
   }
-  const result = await build({ build: { watch: {} } });
+  const result = await build({ configFile: VITE_CONFIG, build: { watch: {} } });
   if (!Array.isArray(result) && "on" in result) {
     watcher = result;
     watcher.on("event", handleBuild);
   }
   server = await createServer({
+    configFile: VITE_CONFIG,
     plugins: [{ name: "svg-board-runtime", configureServer: configureRuntime }],
     server: { host: "127.0.0.1", port: port }
   });

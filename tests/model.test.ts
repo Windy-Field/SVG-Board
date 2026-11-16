@@ -8,8 +8,10 @@ import {
   setConstructionLength,
   updateRelations
 } from "../src/geometry/geometry";
-import { createDocument, createShape, History } from "../src/core/model";
+import { createDocument, createShape, History, MAX_NAME_LENGTH } from "../src/core/model";
 import { createFlowTemplate, createGeometryTemplate } from "../src/objects/templates";
+import { isRecord } from "../src/core/validation";
+import { createFunctionShape } from "../src/math/plots";
 
 /** 验证两个模板都符合保存格式，重新打开后不丢失对象和关系 */
 function testRoundTrip(): void {
@@ -24,7 +26,10 @@ test("模板文件可完整往返", testRoundTrip);
 /** 旧作品默认使用白色画布，新作品的画布颜色可完整保存 */
 function testBackground(): void {
   const document = createDocument();
-  const legacy: Record<string, unknown> = JSON.parse(JSON.stringify(document));
+  const legacy: unknown = JSON.parse(JSON.stringify(document));
+  if (!isRecord(legacy)) {
+    throw new Error("测试作品不是普通对象");
+  }
   delete legacy.background;
   assert.equal(parseDocument(JSON.stringify(legacy)).background, "#ffffff");
   document.background = "#e2f3e8";
@@ -88,6 +93,39 @@ function testCopyRelations(): void {
   assert.equal(copiedPoint.relation.sources[0], restored.shapes[count + 6].id);
 }
 test("复制保留内部依赖", testCopyRelations);
+
+/** 复制最大长度名称时保留后缀，并保持项目可保存 */
+function testCopyNameLimit(): void {
+  const document = createDocument();
+  const shape = createShape("rect", { x: 100, y: 100 });
+  shape.name = "长".repeat(MAX_NAME_LENGTH);
+  shape.width = 100;
+  shape.height = 50;
+  document.shapes.push(shape);
+  pasteShapes(document, [shape]);
+  assert.equal(document.shapes[1].name.length, MAX_NAME_LENGTH);
+  assert.ok(document.shapes[1].name.endsWith(" 副本"));
+  parseDocument(JSON.stringify(document));
+}
+test("复制名称遵守文件长度限制", testCopyNameLimit);
+
+/** 函数的位置由解析式确定，复制不会产生与解析式不一致的坐标偏移 */
+function testCopyFunctionPosition(): void {
+  const document = createDocument();
+  const curve = createFunctionShape({
+    expression: "x^2",
+    minimum: -2,
+    maximum: 2,
+    degree: 0,
+    coefficients: []
+  });
+  document.shapes.push(curve);
+  pasteShapes(document, [curve]);
+  assert.equal(document.shapes[1].x, curve.x);
+  assert.equal(document.shapes[1].y, curve.y);
+  assert.deepEqual(parseDocument(JSON.stringify(document)).shapes[1], document.shapes[1]);
+}
+test("复制函数保留解析式对应位置", testCopyFunctionPosition);
 
 /** 删除来源会同时删除后续构造，剩余文件仍应通过校验 */
 function testDeleteRelations(): void {

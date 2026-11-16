@@ -1,4 +1,5 @@
 import type { Archive } from "../storage/archives";
+import { focusMenuOption } from "./menu-keyboard";
 
 // 存档菜单与窗口边缘的最小距离，单位为屏幕像素
 const MENU_MARGIN = 8;
@@ -73,29 +74,8 @@ function handleMenuKey(event: KeyboardEvent): void {
     if (trigger !== null) {
       trigger.focus();
     }
-  } else {
-    const buttons = menu.querySelectorAll<HTMLButtonElement>("button");
-    if (buttons.length === 0) {
-      return;
-    }
-    let index = 0;
-    for (let current = 0; current < buttons.length; current = current + 1) {
-      if (buttons[current] === document.activeElement) {
-        index = current;
-      }
-    }
-    if (event.key === "ArrowDown") {
-      index = (index + 1) % buttons.length;
-    } else if (event.key === "ArrowUp") {
-      index = (index + buttons.length - 1) % buttons.length;
-    } else if (event.key === "Home") {
-      index = 0;
-    } else if (event.key === "End") {
-      index = buttons.length - 1;
-    } else {
-      return;
-    }
-    buttons[index].focus();
+  } else if (!focusMenuOption(menu, event.key)) {
+    return;
   }
   event.preventDefault();
   event.stopPropagation();

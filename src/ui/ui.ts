@@ -27,7 +27,7 @@ import {
   X,
   createIcons
 } from "lucide";
-import { Crosshair, Equal, GitCommitHorizontal, TextCursorInput, LockKeyhole } from "lucide";
+import { Equal, GitCommitHorizontal, TextCursorInput, LockKeyhole } from "lucide";
 import { Eye, EyeOff, LockOpen } from "lucide";
 import {
   Bold,
@@ -45,11 +45,18 @@ import { setupToolGroups } from "./tool-groups";
 import type { Tool } from "../core/types";
 import packageInfo from "../../package.json";
 import { mountBrandIcon } from "./branding";
-import { MIN_POLYGON_SIDES, MAX_REGULAR_SIDES, DEFAULT_POLYGON_SIDES } from "../core/model";
+import {
+  MIN_POLYGON_SIDES,
+  MAX_REGULAR_SIDES,
+  DEFAULT_POLYGON_SIDES,
+  DEFAULT_STROKE,
+  BOARD_WIDTH,
+  BOARD_HEIGHT
+} from "../core/model";
 import { AlignLeft, AlignCenter, AlignRight, ChevronDown } from "lucide";
 import { setupArchivePicker } from "./archive-picker";
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, MAX_DESCRIPTION_LENGTH } from "../core/model";
-import { Axis3d, ChartSpline, ChartScatter, UnfoldVertical } from "lucide";
+import { Axis3d, ChartSpline, ChartScatter } from "lucide";
 
 // 日期时间刷新间隔，单位为毫秒
 const CLOCK_INTERVAL = 1000;
@@ -100,8 +107,18 @@ function updateClock(): void {
   element.setAttribute("datetime", now.toISOString());
 }
 
-/** 返回静态图标标记，传入名称仅来自本模块配置 */
+/** 返回工具图标，几何专用图标沿用工具栏的线宽和尺寸 */
 function icon(name: string): string {
+  if (name === "angle-bisector") {
+    // 中间的斜线与两段等大的角弧共同表示平分夹角
+    return (
+      '<svg class="lucide" data-geometry-icon="bisector" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M4 4v16h16"/>' +
+      '<path d="M4 20L20 4"/>' +
+      '<path d="M4 12a8 8 0 0 1 5 1.75M10.25 15A8 8 0 0 1 12 20"/>' +
+      "</svg>"
+    );
+  }
   return '<i data-lucide="' + name + '" aria-hidden="true"></i>';
 }
 
@@ -168,7 +185,6 @@ export function refreshIcons(): void {
       Undo2: Undo2,
       Ungroup: Ungroup,
       X: X,
-      Crosshair: Crosshair,
       Equal: Equal,
       GitCommitHorizontal: GitCommitHorizontal,
       TextCursorInput: TextCursorInput,
@@ -190,8 +206,7 @@ export function refreshIcons(): void {
       ChevronDown: ChevronDown,
       Axis3d: Axis3d,
       ChartSpline: ChartSpline,
-      ChartScatter: ChartScatter,
-      UnfoldVertical: UnfoldVertical
+      ChartScatter: ChartScatter
     }
   });
 }
@@ -256,7 +271,7 @@ export function mountInterface(): void {
     { action: "midpoint", label: "中点", icon: "git-commit-horizontal" },
     { action: "parallel", label: "平行线", icon: "equal" },
     { action: "perpendicular", label: "垂线", icon: "plus" },
-    { action: "bisector", label: "角平分线", icon: "unfold-vertical" }
+    { action: "bisector", label: "角平分线", icon: "angle-bisector" }
   ];
   let constructionButtons = "";
   for (const construction of constructions) {
@@ -299,7 +314,7 @@ export function mountInterface(): void {
       </div>
     </header>
     <main class="workspace">
-      <nav class="tools" aria-label="绘图工具">${toolButtons}<div class="tool-divider"></div><div class="geometry-tools" role="group" aria-label="几何构造">${constructionButtons}</div><div class="tool-divider"></div><label class="toolbar-color" title="新图形描边颜色"><input id="tool-stroke" type="color" value="#334155" aria-label="新图形描边颜色" /></label></nav>
+      <nav class="tools" aria-label="绘图工具">${toolButtons}<div class="tool-divider"></div><div class="geometry-tools" role="group" aria-label="几何构造">${constructionButtons}</div><div class="tool-divider"></div><label class="toolbar-color" title="新图形描边颜色"><input id="tool-stroke" type="color" value="${DEFAULT_STROKE}" aria-label="新图形描边颜色" /></label></nav>
       <section id="canvas-host" class="canvas-host" aria-label="画布工作区"><span class="canvas-label">无限画布</span></section>
       <button type="button" class="icon-button inspector-toggle" id="inspector-button" data-action="toggle-inspector" aria-label="说明" title="说明" aria-pressed="true" aria-expanded="true" aria-controls="inspector">${icon("book-open")}</button>
       <aside class="inspector" id="inspector" aria-label="说明">
@@ -310,7 +325,7 @@ export function mountInterface(): void {
         <div class="inspector-foot">SVG-Board</div>
       </aside>
     </main>
-    <footer class="statusbar"><div class="status-left"><div class="release-info"><time id="current-time" aria-label="当前北京时间" title="北京时间（Asia/Shanghai）"></time><span id="app-version" aria-label="应用版本">v${packageInfo.version}</span></div><div class="object-status"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div></div><span id="board-size" class="board-size">1200 × 800</span><div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div></footer>
+    <footer class="statusbar"><div class="status-left"><div class="release-info"><time id="current-time" aria-label="当前北京时间" title="北京时间（Asia/Shanghai）"></time><span id="app-version" aria-label="应用版本">v${packageInfo.version}</span></div><div class="object-status"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div></div><span id="board-size" class="board-size">${BOARD_WIDTH} × ${BOARD_HEIGHT}</span><div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div></footer>
     <div id="message" class="message" role="status" hidden></div>
     <input id="file-input" type="file" accept=".json,.svg" hidden />
     <dialog id="text-dialog"><form id="text-form"><div class="dialog-heading"><h2>编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="${MAX_TEXT_LENGTH}"></textarea><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>

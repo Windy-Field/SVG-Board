@@ -38,6 +38,8 @@ export const DEFAULT_POLYGON_SIDES = 5;
 export const DEFAULT_STROKE_WIDTH = 2;
 // 几何点允许的最大半径
 export const MAX_POINT_RADIUS = 5000;
+// 几何点允许的最小半径，单位为画布坐标
+export const MIN_POINT_RADIUS = 1;
 // 矩形允许的最大圆角半径
 export const MAX_CORNER_RADIUS = 50000;
 // 多边形设置框允许的最少边数
@@ -48,8 +50,14 @@ export const MAX_REGULAR_SIDES = 32;
 export const MAX_POLYGON_POINTS = 1000;
 // 折线中段允许超出两端范围的最大比例
 export const MAX_BEND_RATIO = 10;
+// 折线初始中段位置，0.5 表示起终点水平方向的中间
+export const DEFAULT_BEND_RATIO = 0.5;
 // 作品名称与对象名称的最大字符数
 export const MAX_NAME_LENGTH = 100;
+// 对象编号、分组编号和字体标识允许的最大字符数
+export const MAX_IDENTIFIER_LENGTH = 80;
+// 保存文件允许的最大层级绝对值，对象排序后重新编号
+export const MAX_LAYER = 100000;
 // 单个文字对象的最大字符数
 export const MAX_TEXT_LENGTH = 10000;
 // Markdown 项目说明的最大字符数
@@ -120,7 +128,7 @@ export function createShape(kind: ShapeKind, position: Point): Shape {
     underline: false,
     points: [],
     sides: DEFAULT_POLYGON_SIDES,
-    bend: 0.5,
+    bend: DEFAULT_BEND_RATIO,
     locked: false,
     hidden: false,
     auxiliary: false,

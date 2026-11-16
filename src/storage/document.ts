@@ -10,6 +10,13 @@ import { MAX_COORDINATE_POINTS, MAX_MATH_COORDINATE } from "../math/coordinates"
 import { MAX_FIT_DEGREE, updateFunctionPath } from "../math/plots";
 import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
 import { isFont } from "../ui/fonts";
+import { isRecord } from "../core/validation";
+import {
+  MIN_POINT_RADIUS,
+  DEFAULT_BEND_RATIO,
+  MAX_IDENTIFIER_LENGTH,
+  MAX_LAYER
+} from "../core/model";
 import { createDocument, DEFAULT_BACKGROUND } from "../core/model";
 import { convertPointLabels } from "../objects/point-labels";
 import {
@@ -37,11 +44,6 @@ import {
 export const MAX_FILE_BYTES = 8 * 1024 * 1024;
 // 浏览器自动恢复作品的存储键
 export const STORAGE_KEY = "svg-board-document-v1";
-
-/** 判断未知输入是否为普通对象，方便安全读取文件内容 */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** 读取有长度上限的字符串，不符合条件时拒绝整个文件 */
 function readString(value: unknown, limit: number): string {
@@ -127,13 +129,13 @@ function readShape(value: unknown): Shape {
   }
   const sources: string[] = [];
   for (const source of value.relation.sources) {
-    sources.push(readString(source, 80));
+    sources.push(readString(source, MAX_IDENTIFIER_LENGTH));
   }
   const path = readString(value.path, MAX_PATH_LENGTH);
   if (!/^[MLQCHVZmlqchvz0-9eE.,\s+\-]*$/.test(path)) {
     throw new Error("画笔路径包含不支持的指令");
   }
-  const fontFamily = readString(value.fontFamily, 80);
+  const fontFamily = readString(value.fontFamily, MAX_IDENTIFIER_LENGTH);
   if (!isFont(fontFamily)) {
     throw new Error("文件包含不支持的字体");
   }
@@ -179,7 +181,7 @@ function readShape(value: unknown): Shape {
     }
   }
   const shape: Shape = {
-    id: readString(value.id, 80),
+    id: readString(value.id, MAX_IDENTIFIER_LENGTH),
     kind: readKind(value.kind),
     lineType: readLineType(value.lineType),
     coordinatePoint: optionalBoolean(value.coordinatePoint),
@@ -189,7 +191,12 @@ function readShape(value: unknown): Shape {
     width: readNumber(value.width, -MAX_COORDINATE, MAX_COORDINATE),
     height: readNumber(value.height, -MAX_COORDINATE, MAX_COORDINATE),
     cornerRadius: optionalNumber(value.cornerRadius, 0, 0, MAX_CORNER_RADIUS),
-    pointRadius: optionalNumber(value.pointRadius, DEFAULT_POINT_RADIUS, 1, MAX_POINT_RADIUS),
+    pointRadius: optionalNumber(
+      value.pointRadius,
+      DEFAULT_POINT_RADIUS,
+      MIN_POINT_RADIUS,
+      MAX_POINT_RADIUS
+    ),
     rotation: readNumber(value.rotation, -MAX_ROTATION, MAX_ROTATION),
     stroke: readColor(value.stroke),
     fill: readColor(value.fill),
@@ -211,12 +218,12 @@ function readShape(value: unknown): Shape {
       MIN_POLYGON_SIDES,
       MAX_POLYGON_POINTS
     ),
-    bend: optionalNumber(value.bend, 0.5, -MAX_BEND_RATIO, MAX_BEND_RATIO),
+    bend: optionalNumber(value.bend, DEFAULT_BEND_RATIO, -MAX_BEND_RATIO, MAX_BEND_RATIO),
     locked: readBoolean(value.locked),
     hidden: readBoolean(value.hidden),
     auxiliary: readBoolean(value.auxiliary),
-    group: readString(value.group, 80),
-    layer: readNumber(value.layer, -100000, 100000),
+    group: readString(value.group, MAX_IDENTIFIER_LENGTH),
+    layer: readNumber(value.layer, -MAX_LAYER, MAX_LAYER),
     path: path,
     relation: relation
   };
@@ -388,7 +395,7 @@ function validateRelations(shapes: Shape[]): void {
           second.kind !== "point" ||
           shape.kind !== "line")
       ) {
-        throw new Error("平行线或垂线需要一条线段和一个点");
+        throw new Error("平行线或垂线需要一条线和一个点");
       }
       if (
         relation.kind === "connector" &&

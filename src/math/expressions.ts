@@ -33,7 +33,7 @@ export function compileExpression(expression: string): EvalFunction {
   let text = expression.trim();
   text = text.replace(/^y\s*=/i, "");
   if (text.length === 0 || text.length > MAX_EXPRESSION_LENGTH) {
-    throw new Error("请输入不超过 500 字的函数解析式");
+    throw new Error("请输入不超过 " + MAX_EXPRESSION_LENGTH + " 字的函数解析式");
   }
   const cached = compiledExpressions.get(text);
   if (cached !== undefined) {

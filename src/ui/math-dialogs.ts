@@ -5,20 +5,20 @@ import {
   parseCoordinatePoints,
   toCanvasPoint,
   toMathPoint,
-  MAX_MATH_COORDINATE
+  MAX_MATH_COORDINATE,
+  MAX_COORDINATE_TEXT_LENGTH
 } from "../math/coordinates";
 import {
   createFunctionShape,
   fitPolynomial,
   DEFAULT_DOMAIN_MINIMUM,
   DEFAULT_DOMAIN_MAXIMUM,
-  MAX_FIT_DEGREE
+  MAX_FIT_DEGREE,
+  MIN_FIT_DEGREE
 } from "../math/plots";
 import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
 import { addPointLabel, nextPointName } from "../objects/point-labels";
 
-// 批量坐标输入框允许的最大字符数
-const MAX_POINTS_INPUT = 10000;
 // 函数输入框首次显示的解析式
 const DEFAULT_EXPRESSION = "sin(x)";
 // 多项式拟合输入框的初始阶数
@@ -42,9 +42,11 @@ export function setupMathDialogs(board: BoardCanvas, commit: () => void): void {
     DEFAULT_EXPRESSION +
     '" /></label>' +
     '<label id="math-points-field" class="property-field"><span>坐标</span><textarea id="math-points" aria-label="坐标列表" rows="6" maxlength="' +
-    MAX_POINTS_INPUT +
+    MAX_COORDINATE_TEXT_LENGTH +
     '" placeholder="0, 0&#10;1, 1&#10;2, 4"></textarea></label>' +
-    '<div id="math-fit-fields"><div class="fit-modes" role="group" aria-label="拟合方式"><label><input type="radio" name="fit-mode" value="linear" checked />线性拟合</label><label><input type="radio" name="fit-mode" value="polynomial" />多项式拟合</label></div><label class="property-field"><span>多项式阶数</span><input id="math-degree" aria-label="多项式阶数" type="number" min="1" max="' +
+    '<div id="math-fit-fields"><div class="fit-modes" role="group" aria-label="拟合方式"><label><input type="radio" name="fit-mode" value="linear" checked />线性拟合</label><label><input type="radio" name="fit-mode" value="polynomial" />多项式拟合</label></div><label class="property-field"><span>多项式阶数</span><input id="math-degree" aria-label="多项式阶数" type="number" min="' +
+    MIN_FIT_DEGREE +
+    '" max="' +
     MAX_FIT_DEGREE +
     '" value="' +
     DEFAULT_FIT_DEGREE +
@@ -170,7 +172,7 @@ function createFitShapes(text: string, minimum: number, maximum: number): Shape[
       points.push(toMathPoint(source));
     }
   }
-  let degree = 1;
+  let degree = MIN_FIT_DEGREE;
   const polynomial = document.querySelector('input[name="fit-mode"][value="polynomial"]');
   if (polynomial instanceof HTMLInputElement && polynomial.checked) {
     degree = Number(input("math-degree").value);

@@ -1,3 +1,4 @@
+import { testArtifact } from "./helpers";
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { parseDocument, STORAGE_KEY } from "../../src/storage/document";
@@ -227,7 +228,7 @@ async function runControls(page: Page): Promise<void> {
   const rotated = await savedDocument(page);
   expect(Math.abs(rotated.shapes[0].rotation)).toBeGreaterThan(30);
   await expect(page.locator("#selection-count")).toHaveText("已选择 1");
-  await page.screenshot({ path: "test-results/selection-controls.png" });
+  await page.screenshot({ path: testArtifact("selection-controls.png") });
 }
 
 /** 在水平、垂直和反向线条中间拖动，不能误触缩放手柄或改变线的方向 */

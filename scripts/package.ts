@@ -1,12 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import JSZip from "jszip";
-
-// 本地发布压缩包的输出目录
-const OUTPUT_DIRECTORY = "release";
+import packageInfo from "../package.json";
+import { BUILD_DIRECTORY, RELEASE_DIRECTORY } from "../config/paths";
 
 /** 将发布目录中的文件加入压缩包，保留第三方许可和示例 */
-async function addFolder(zip, directory, prefix) {
+async function addFolder(zip: JSZip, directory: string, prefix: string): Promise<void> {
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     const source = path.join(directory, entry.name);
@@ -21,17 +20,16 @@ async function addFolder(zip, directory, prefix) {
 }
 
 /** 生成可解压后双击打开的发布包，文件名从项目版本读取 */
-async function packageApplication() {
-  const packageText = await fs.readFile("package.json", "utf8");
-  const packageInfo = JSON.parse(packageText);
+async function packageApplication(): Promise<void> {
   const zip = new JSZip();
-  await addFolder(zip, "dist", "");
+  await addFolder(zip, BUILD_DIRECTORY, "");
   await addFolder(zip, "examples", "examples/");
-  zip.file("index.html", await fs.readFile("dist/editor.html"));
+  const editor = await fs.readFile(path.join(BUILD_DIRECTORY, "editor.html"));
+  zip.file("index.html", editor);
   zip.file("LICENSE", await fs.readFile("LICENSE"));
   const content = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-  await fs.mkdir(OUTPUT_DIRECTORY, { recursive: true });
-  const output = path.join(OUTPUT_DIRECTORY, "SVG-Board-" + packageInfo.version + ".zip");
+  await fs.mkdir(RELEASE_DIRECTORY, { recursive: true });
+  const output = path.join(RELEASE_DIRECTORY, "SVG-Board-" + packageInfo.version + ".zip");
   await fs.writeFile(output, content);
   console.log(output);
 }

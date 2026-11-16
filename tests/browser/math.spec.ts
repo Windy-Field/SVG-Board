@@ -1,3 +1,4 @@
+import { testArtifact } from "./helpers";
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { createDocument, createShape } from "../../src/core/model";
@@ -177,7 +178,7 @@ async function checkFunction(page: Page): Promise<void> {
   expect((await saved(page)).shapes[0].hidden).toBe(true);
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   expect((await saved(page)).shapes[0].hidden).toBe(false);
-  await page.screenshot({ path: "test-results/function-workspace.png" });
+  await page.screenshot({ path: testArtifact("function-workspace.png") });
 }
 
 /** 多项式拟合支持直接输入点，移动来源后重新生成解析式 */
@@ -206,7 +207,7 @@ async function checkFit(page: Page): Promise<void> {
   await page.getByRole("button", { name: "导出", exact: true }).click();
   expect(await page.evaluate(readPreviewLabels)).toContain("y = 1");
   await page.getByRole("button", { name: "关闭导出", exact: true }).click();
-  await page.screenshot({ path: "test-results/fitted-function.png" });
+  await page.screenshot({ path: testArtifact("fitted-function.png") });
 }
 
 /** 射线按两次点击确定端点与方向，坐标轴比例尺长度使用真实缩放 */
@@ -253,7 +254,7 @@ async function checkLinesAndScale(page: Page): Promise<void> {
   expect(Math.max.apply(null, widths)).toBeGreaterThan(Math.min.apply(null, widths));
   await page.getByRole("button", { name: "显示坐标轴", exact: true }).click();
   await expect(page.locator("#axes-button")).toHaveAttribute("aria-pressed", "false");
-  await page.screenshot({ path: "test-results/rays-and-lines.png" });
+  await page.screenshot({ path: testArtifact("rays-and-lines.png") });
 }
 
 /** 空白区直接拖动和对象上长按均可平移，作品坐标保持不变 */
@@ -348,7 +349,7 @@ async function checkLockPosition(page: Page): Promise<void> {
   for (const offset of [30, 60, 90]) {
     await page.mouse.move(start.x + offset, start.y + offset / 2);
     expect(await page.evaluate(readLockPixels, { x: 550, y: 420 })).toBeGreaterThan(15);
-    await page.screenshot({ path: "test-results/lock-pan-" + offset + ".png" });
+    await page.screenshot({ path: testArtifact("lock-pan-" + offset + ".png") });
   }
   await page.mouse.up();
   for (let index = 0; index < 2; index = index + 1) {

@@ -82,7 +82,7 @@ export function createFlowTemplate(): BoardDocument {
   return document;
 }
 
-/** 创建关联两点的线段，供三角形和中线复用 */
+/** 创建关联两点的直线，供三角形边和中线复用 */
 function addSegment(document: BoardDocument, first: Shape, second: Shape): Shape {
   const shape = createShape("line", { x: first.x, y: first.y });
   shape.name = first.text + second.text;

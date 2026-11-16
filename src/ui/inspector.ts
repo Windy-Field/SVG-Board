@@ -14,7 +14,7 @@ import {
 import { commandButton, getElement, refreshIcons } from "./ui";
 import type { BoardDocument, Shape } from "../core/types";
 import { fontOptions } from "./fonts";
-import { MAX_CORNER_RADIUS, MAX_POINT_RADIUS } from "../core/model";
+import { MAX_CORNER_RADIUS, MAX_POINT_RADIUS, MIN_POINT_RADIUS, DEFAULT_FILL } from "../core/model";
 import { MAX_NAME_LENGTH, MAX_ROTATION, MAX_STROKE_WIDTH } from "../core/model";
 import {
   isConstructionLine,
@@ -199,7 +199,7 @@ function applyCheckbox(shape: Shape, property: string, checked: boolean): boolea
   } else if (property === "auxiliary") {
     shape.auxiliary = checked;
   } else if (property === "noFill") {
-    shape.fill = "#ffffff";
+    shape.fill = DEFAULT_FILL;
     if (checked) {
       shape.fill = "none";
     }
@@ -393,7 +393,14 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
   if (shape.kind === "point") {
     markup =
       markup +
-      numberField("点半径", "pointRadius", shape.pointRadius, 1, MAX_POINT_RADIUS, shape.locked);
+      numberField(
+        "点半径",
+        "pointRadius",
+        shape.pointRadius,
+        MIN_POINT_RADIUS,
+        MAX_POINT_RADIUS,
+        shape.locked
+      );
   }
   if (
     !isLine(shape) &&

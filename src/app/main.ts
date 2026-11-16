@@ -50,6 +50,8 @@ const MESSAGE_DURATION = 6000;
 const AUTOSAVE_DELAY = 300;
 // 方向键配合 Shift 时的单次移动距离
 const LARGE_MOVE_DISTANCE = 10;
+// 点击缩放按钮时的倍率，大于 1，缩小时使用它的倒数
+const ZOOM_BUTTON_FACTOR = 1.2;
 let board: BoardCanvas;
 const history = new History();
 let clipboard: Shape[] = [];
@@ -507,9 +509,9 @@ async function executeAction(action: string): Promise<void> {
       refreshPanels();
     }
   } else if (action === "zoom-in") {
-    board.zoomTo(board.viewport.zoom * 1.2);
+    board.zoomTo(board.viewport.zoom * ZOOM_BUTTON_FACTOR);
   } else if (action === "zoom-out") {
-    board.zoomTo(board.viewport.zoom / 1.2);
+    board.zoomTo(board.viewport.zoom / ZOOM_BUTTON_FACTOR);
   } else if (action === "reset-zoom") {
     board.zoomTo(1);
   } else if (action === "fit") {

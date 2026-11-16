@@ -1,8 +1,4 @@
 node_modules/
-release/
-dist/
-test-results/
-playwright-report/
-.hallmark/
+artifacts/
 *.log
 [Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]

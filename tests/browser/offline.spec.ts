@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
 import type { Route } from "@playwright/test";
+import { BUILD_DIRECTORY } from "../../config/paths";
 
 /** 使用普通 JSON 读取版本号，浏览器测试共用项目版本来源 */
 function readVersion(): string {
@@ -20,7 +21,10 @@ function readVersion(): string {
 
 /** 直接打开项目根入口，验证构建后的编辑器无需服务器即可绘制和导出 */
 async function testOffline(): Promise<void> {
-  test.skip(!fs.existsSync("dist/editor.html"), "先运行 npm run build 生成离线文件");
+  test.skip(
+    !fs.existsSync(path.join(BUILD_DIRECTORY, "editor.html")),
+    "先运行 npm run build 生成离线文件"
+  );
   const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });

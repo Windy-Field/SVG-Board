@@ -10,6 +10,8 @@ export const COORDINATE_UNIT = 40;
 export const MAX_MATH_COORDINATE = 1000;
 // 一次批量放置允许的最多点数
 export const MAX_COORDINATE_POINTS = 200;
+// 批量坐标文本输入上限，界面和解析器共用
+export const MAX_COORDINATE_TEXT_LENGTH = 10000;
 
 /** 数学坐标转为画布坐标，数学纵轴向上 */
 export function toCanvasPoint(point: Point): Point {
@@ -23,15 +25,21 @@ export function toMathPoint(point: Point): Point {
 
 /** 按行或分号读取坐标对，整批校验通过后再创建对象 */
 export function parseCoordinatePoints(text: string): Point[] {
-  const normalized = text.replace(/[（(]/g, "").replace(/[）)]/g, "").replace(/，/g, ",");
+  if (text.length > MAX_COORDINATE_TEXT_LENGTH) {
+    throw new Error("坐标文本不能超过 " + MAX_COORDINATE_TEXT_LENGTH + " 字");
+  }
+  const withoutOpening = text.replace(/[（(]/g, "");
+  const withoutClosing = withoutOpening.replace(/[）)]/g, "");
+  const normalized = withoutClosing.replace(/，/g, ",");
   const rows = normalized.split(/[\n;；]+/);
   const points: Point[] = [];
   for (const row of rows) {
     if (row.trim() === "") {
       continue;
     }
-    const values = row.trim().split(/[,\s]+/);
-    if (values.length !== 2) {
+    const trimmed = row.trim();
+    const values = trimmed.split(/[,\s]+/);
+    if (values.length !== 2 || values[0] === "" || values[1] === "") {
       throw new Error("每行输入一组 x, y 坐标");
     }
     const point = { x: Number(values[0]), y: Number(values[1]) };

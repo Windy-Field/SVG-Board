@@ -15,5 +15,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Package created in release
+echo Package created in artifacts\release
 pause

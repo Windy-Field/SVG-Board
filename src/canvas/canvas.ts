@@ -38,7 +38,7 @@ import {
   MIN_FONT_SIZE,
   MAX_FONT_SIZE
 } from "../core/model";
-import { MAX_POINT_RADIUS } from "../core/model";
+import { MAX_POINT_RADIUS, MIN_POINT_RADIUS } from "../core/model";
 import {
   isConstructionTool,
   constructionSourceCount,
@@ -84,6 +84,14 @@ const WHEEL_ZOOM_SPEED = 0.005;
 const HOLD_PAN_DELAY = 450;
 // 长按期间允许的手部移动距离，单位为屏幕像素
 const HOLD_PAN_TOLERANCE = 12;
+// 新对象小于此对角线长度时取消创建，单位为画布坐标
+const MIN_DRAWING_LENGTH = 4;
+// 封闭图形创建后的最小边长，单位为画布坐标
+const MIN_SHAPE_SIZE = 8;
+// 草稿相对正式对象的显示透明度，取值为 0 到 1
+const PREVIEW_OPACITY = 0.75;
+// 多边形草稿的浅色填充
+const POLYGON_PREVIEW_FILL = "#2563eb11";
 
 /** 画布通过回调报告作品、选择和视口变化 */
 export interface CanvasCallbacks {
@@ -118,7 +126,7 @@ export class BoardCanvas {
   document: BoardDocument;
   selectedIds: string[] = [];
   tool: Tool = "select";
-  viewport: Viewport = { x: 40, y: 40, zoom: 1 };
+  viewport: Viewport = { x: CANVAS_MARGIN, y: CANVAS_MARGIN, zoom: 1 };
   showGrid = true;
   showAxes = true;
   snap = true;
@@ -302,8 +310,8 @@ export class BoardCanvas {
 
   /** 将整个画板放进工作区，不改变项目尺寸 */
   fit(): void {
-    const width = Math.max(80, this.host.clientWidth - CANVAS_MARGIN * 2);
-    const height = Math.max(80, this.host.clientHeight - CANVAS_MARGIN * 2);
+    const width = Math.max(CANVAS_MARGIN * 2, this.host.clientWidth - CANVAS_MARGIN * 2);
+    const height = Math.max(CANVAS_MARGIN * 2, this.host.clientHeight - CANVAS_MARGIN * 2);
     let bounds = { x: 0, y: 0, width: this.document.width, height: this.document.height };
     const objects = this.fabric.getObjects();
     if (objects.length > 0) {
@@ -328,7 +336,12 @@ export class BoardCanvas {
         bottom = Math.max(bottom, box.top + box.height);
       }
       if (Number.isFinite(left)) {
-        bounds = { x: left - 40, y: top - 40, width: right - left + 80, height: bottom - top + 80 };
+        bounds = {
+          x: left - CANVAS_MARGIN,
+          y: top - CANVAS_MARGIN,
+          width: right - left + CANVAS_MARGIN * 2,
+          height: bottom - top + CANVAS_MARGIN * 2
+        };
       }
     }
     this.viewport.zoom = Math.max(
@@ -1039,7 +1052,10 @@ export class BoardCanvas {
       }
       shape.pointRadius = Math.min(
         MAX_POINT_RADIUS,
-        Math.max(1, Math.hypot(position.x - gesture.start.x, position.y - gesture.start.y))
+        Math.max(
+          MIN_POINT_RADIUS,
+          Math.hypot(position.x - gesture.start.x, position.y - gesture.start.y)
+        )
       );
       this.drawPreview();
       return;
@@ -1089,7 +1105,7 @@ export class BoardCanvas {
       previous.dispose();
     }
     const preview = createFabricShape(shape, this.viewBounds());
-    preview.set({ selectable: false, evented: false, opacity: 0.75 });
+    preview.set({ selectable: false, evented: false, opacity: PREVIEW_OPACITY });
     this.fabric.add(preview);
     this.objects.set(shape.id, preview);
     this.fabric.requestRenderAll();
@@ -1102,10 +1118,7 @@ export class BoardCanvas {
       return;
     }
     const object = event.path;
-    let path = "";
-    for (const command of object.path) {
-      path = path + command.join(" ") + " ";
-    }
+    const path = serializePath(object);
     if (path.length > MAX_PATH_LENGTH || this.document.shapes.length >= MAX_SHAPES) {
       this.fabric.remove(object);
       this.callbacks.notify("画笔内容超过上限，请缩短笔画");
@@ -1187,7 +1200,7 @@ export class BoardCanvas {
       }
     }
     if (shape !== null && shape.kind !== "point") {
-      if (Math.hypot(shape.width, shape.height) < 4 && shape.kind !== "pencil") {
+      if (Math.hypot(shape.width, shape.height) < MIN_DRAWING_LENGTH && shape.kind !== "pencil") {
         this.cancelGesture();
         return;
       }
@@ -1195,8 +1208,8 @@ export class BoardCanvas {
         const bounds = getBounds(shape);
         shape.x = bounds.x;
         shape.y = bounds.y;
-        shape.width = Math.max(8, bounds.width);
-        shape.height = Math.max(8, bounds.height);
+        shape.width = Math.max(MIN_SHAPE_SIZE, bounds.width);
+        shape.height = Math.max(MIN_SHAPE_SIZE, bounds.height);
       }
       if (shape.kind === "polygon") {
         shape.points = regularPoints(shape.width, shape.height, shape.sides);
@@ -1247,9 +1260,9 @@ export class BoardCanvas {
       }
     }
     this.polygonPreview = new Polygon(this.customVertices, {
-      fill: "#2563eb11",
+      fill: POLYGON_PREVIEW_FILL,
       stroke: this.stroke,
-      strokeWidth: 2,
+      strokeWidth: PENCIL_WIDTH,
       selectable: false,
       evented: false
     });
@@ -1657,7 +1670,7 @@ export class BoardCanvas {
     const overlap = this.overlapClick;
     this.overlapClick = null;
     if (overlap !== null) {
-      if (Math.hypot(event.clientX - overlap.x, event.clientY - overlap.y) < 4) {
+      if (Math.hypot(event.clientX - overlap.x, event.clientY - overlap.y) < CLICK_DISTANCE) {
         const id = this.overlapSelection.choose(
           { x: event.clientX, y: event.clientY },
           overlap.ids
@@ -1720,7 +1733,10 @@ export class BoardCanvas {
     }
     const click = this.selectionClick;
     this.selectionClick = null;
-    if (click !== null && Math.hypot(event.clientX - click.x, event.clientY - click.y) < 4) {
+    if (
+      click !== null &&
+      Math.hypot(event.clientX - click.x, event.clientY - click.y) < CLICK_DISTANCE
+    ) {
       this.selectedIds = click.ids;
       this.select(click.id, true);
     }

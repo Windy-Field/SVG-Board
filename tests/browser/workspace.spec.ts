@@ -4,7 +4,7 @@ import { createDocument, createShape, GRID_SIZE } from "../../src/core/model";
 import { parseDocument } from "../../src/storage/document";
 import { createFlowTemplate } from "../../src/objects/templates";
 import type { BoardDocument, Point } from "../../src/core/types";
-import { selectArchive } from "./helpers";
+import { selectArchive, testArtifact } from "./helpers";
 import { constructShape } from "../../src/core/commands";
 
 // 浏览器通道由运行环境指定，Windows 可使用 msedge
@@ -124,6 +124,11 @@ async function checkToolbar(page: Page): Promise<void> {
   ]);
   const constructions = await page.locator(".geometry-tools button").evaluateAll(readToolNames);
   expect(constructions).toEqual(["两点直线", "交点", "中点", "平行线", "垂线", "角平分线"]);
+  const bisectorButton = page.getByRole("button", { name: "角平分线", exact: true });
+  const bisectorIcon = bisectorButton.locator('svg[data-geometry-icon="bisector"]');
+  await expect(bisectorIcon).toBeVisible();
+  await expect(bisectorIcon).toHaveAttribute("viewBox", "0 0 24 24");
+  await page.locator(".geometry-tools").screenshot({ path: testArtifact("geometry-toolbar.png") });
   await expect(page.locator(".tool-divider").first()).toBeVisible();
   /** 检查工具栏实际高度，不能靠隐藏溢出内容消除滚动条 */
   function toolbarFits(): boolean {
@@ -172,7 +177,7 @@ async function checkToolbar(page: Page): Promise<void> {
   await expect(page.locator("#text-dialog")).toBeVisible();
   await expect(page.locator("#text-value")).toHaveValue("纵向文本");
   await page.getByRole("button", { name: "保存文字", exact: true }).click();
-  await page.screenshot({ path: "test-results/workspace-toolbar.png" });
+  await page.screenshot({ path: testArtifact("workspace-toolbar.png") });
 }
 
 /** 按 DOM 顺序读取工具名称，验证截图指定的排列 */
@@ -222,7 +227,7 @@ async function checkLines(page: Page): Promise<void> {
   const redone = await saved(page);
   expect(redone.shapes[0].x + redone.shapes[0].width).toBe(640);
   await page.keyboard.press("Escape");
-  await page.screenshot({ path: "test-results/workspace-arrow.png" });
+  await page.screenshot({ path: testArtifact("workspace-arrow.png") });
 }
 
 /** 验证 Ctrl 增减多选、直接取消成员和右键框选 */
@@ -425,7 +430,7 @@ async function checkTextAndDescription(page: Page): Promise<void> {
   await expect(page.locator("#description-preview script, #description-preview img")).toHaveCount(
     0
   );
-  await page.screenshot({ path: "test-results/text-description-desktop.png" });
+  await page.screenshot({ path: testArtifact("text-description-desktop.png") });
 }
 
 /** 验证折线中段可以单独调整，并在撤销后恢复 */
@@ -472,7 +477,7 @@ async function checkArchiveDuplicates(page: Page): Promise<void> {
   }
   const palette = await confirm.evaluate(colors);
   expect(palette).toEqual(["rgb(255, 255, 255)", "rgb(145, 32, 24)"]);
-  await page.screenshot({ path: "test-results/delete-hover.png" });
+  await page.screenshot({ path: testArtifact("delete-hover.png") });
   await page.locator('[data-action="cancel-delete"]').first().click();
 }
 
@@ -535,7 +540,7 @@ async function checkWorkspaceScreenshot(page: Page): Promise<void> {
   await page.locator("#snap-button").click();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.locator("#object-count")).toHaveText("0 个对象");
-  let path = "test-results/workspace-empty.png";
+  let path = testArtifact("workspace-empty.png");
   if (UPDATE_SCREENSHOTS) {
     path = "docs/images/workspace-empty.png";
   }
@@ -566,7 +571,7 @@ async function checkEndpointIntersections(page: Page): Promise<void> {
   expect(resized.shapes[2].x + resized.shapes[2].width).toBeCloseTo(573, 4);
   expect(resized.shapes[2].y + resized.shapes[2].height).toBeCloseTo(357, 4);
   await page.keyboard.press("Escape");
-  await page.screenshot({ path: "test-results/arrow-intersection.png" });
+  await page.screenshot({ path: testArtifact("arrow-intersection.png") });
 }
 
 /** 打开已有重复存档时合并相同内容，保留当前作品和修改后的副本 */
@@ -760,7 +765,7 @@ async function checkObjectManagement(page: Page): Promise<void> {
   await drag(page, middle, { x: middle.x + 50, y: middle.y + 30 });
   const afterDrag = await saved(page);
   expect(afterDrag.shapes[2].x).toBe(250);
-  await page.screenshot({ path: "test-results/locked-object.png" });
+  await page.screenshot({ path: testArtifact("locked-object.png") });
   await page.locator("#objects-tab").click();
   await page.locator('[data-object-lock="' + line.id + '"]').click();
   await page.locator('[data-visibility="' + first.id + '"]').click();
@@ -836,7 +841,7 @@ async function checkBackgroundAndPreview(page: Page): Promise<void> {
     expect(picture.y).toBeGreaterThanOrEqual(frame.y - 1);
     expect(picture.x + picture.width).toBeLessThanOrEqual(frame.x + frame.width + 1);
     expect(picture.y + picture.height).toBeLessThanOrEqual(frame.y + frame.height + 1);
-    await page.screenshot({ path: "test-results/export-preview-" + width + ".png" });
+    await page.screenshot({ path: testArtifact("export-preview-" + width + ".png") });
     await page.getByRole("button", { name: "关闭导出", exact: true }).click();
   }
 }
@@ -896,9 +901,9 @@ async function checkTextToolbarLayout(page: Page): Promise<void> {
     await page.keyboard.press("Enter");
     await expect(page.locator("#font-menu-label")).toHaveText("微软雅黑");
     await page.getByRole("button", { name: "字体", exact: true }).click();
-    await page.screenshot({ path: "test-results/text-toolbar-menu-" + width + ".png" });
+    await page.screenshot({ path: testArtifact("text-toolbar-menu-" + width + ".png") });
     await page.keyboard.press("Escape");
-    await page.screenshot({ path: "test-results/text-toolbar-" + width + ".png" });
+    await page.screenshot({ path: testArtifact("text-toolbar-" + width + ".png") });
     if (UPDATE_SCREENSHOTS && width === 1280) {
       await toolbar.screenshot({ path: "docs/images/text-toolbar.png" });
     }
@@ -1010,7 +1015,7 @@ async function checkMenuToggle(page: Page): Promise<void> {
   }
   expect(bounds.x).toBeCloseTo(button.x, 1);
   expect(bounds.width).toBeCloseTo(button.width, 1);
-  await page.screenshot({ path: "test-results/archive-menu-desktop.png" });
+  await page.screenshot({ path: testArtifact("archive-menu-desktop.png") });
   await trigger.click();
   await expect(menu).toBeHidden();
   await selectArchive(page, "课程作业 · 提交流程");

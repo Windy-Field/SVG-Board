@@ -27,6 +27,19 @@ function testCoordinates(): void {
 }
 test("批量坐标与坐标转换", testCoordinates);
 
+/** 缺少任一坐标都应报错，不能借助 Number 的空串转换变成零 */
+function testMissingCoordinate(): void {
+  for (const text of [",1", "1,", "(, 1)", "(1, )"]) {
+    /** 将缺失坐标的输入传给正式解析器 */
+    function parseInvalid(): void {
+      parseCoordinatePoints(text);
+    }
+    assert.throws(parseInvalid);
+  }
+  assert.deepEqual(parseCoordinatePoints("0, 0"), [{ x: 0, y: 0 }]);
+}
+test("坐标缺项不能隐式转成零", testMissingCoordinate);
+
 /** 普通数学表达式可执行，赋值、属性、脚本和无效语法不能执行 */
 function testExpressions(): void {
   assert.equal(evaluateExpression(compileExpression("y = 2x + 1"), 3), 7);

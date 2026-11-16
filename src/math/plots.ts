@@ -1,7 +1,12 @@
 import { PolynomialRegression } from "ml-regression-polynomial";
 import { format } from "mathjs";
 import { compileExpression, evaluateExpression } from "./expressions";
-import { toCanvasPoint, toMathPoint, MAX_COORDINATE_POINTS } from "./coordinates";
+import {
+  toCanvasPoint,
+  toMathPoint,
+  MAX_COORDINATE_POINTS,
+  MAX_MATH_COORDINATE
+} from "./coordinates";
 import { createShape, MAX_COORDINATE, MAX_NAME_LENGTH } from "../core/model";
 import type { FunctionDefinition, Point, Shape } from "../core/types";
 
@@ -10,6 +15,8 @@ export const DEFAULT_DOMAIN_MINIMUM = -10;
 export const DEFAULT_DOMAIN_MAXIMUM = 10;
 // 多项式拟合允许的最高阶数，至少为一阶
 export const MAX_FIT_DEGREE = 8;
+// 拟合至少为一阶，单变量线性拟合与界面下限共用
+export const MIN_FIT_DEGREE = 1;
 // 单条函数曲线的采样段数
 const SAMPLE_COUNT = 1000;
 // 相邻采样点超过此距离时断开路径，避免跨越渐近线
@@ -115,11 +122,11 @@ export function fitPolynomial(
 ): FunctionDefinition {
   if (
     !Number.isInteger(degree) ||
-    degree < 1 ||
+    degree < MIN_FIT_DEGREE ||
     degree > MAX_FIT_DEGREE ||
     points.length <= degree
   ) {
-    throw new Error("拟合点数需大于阶数，阶数为 1 到 8");
+    throw new Error("拟合点数需大于阶数，阶数为 " + MIN_FIT_DEGREE + " 到 " + MAX_FIT_DEGREE);
   }
   if (points.length > MAX_COORDINATE_POINTS) {
     throw new Error("拟合最多使用 " + MAX_COORDINATE_POINTS + " 个点");
@@ -128,6 +135,9 @@ export function fitPolynomial(
   const vertical: number[] = [];
   const unique = new Set<number>();
   for (const point of points) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      throw new Error("拟合点必须使用有限坐标");
+    }
     horizontal.push(point.x);
     vertical.push(point.y);
     unique.add(point.x);
@@ -153,7 +163,14 @@ export function fitPolynomial(
 /** 生成分段采样路径，遇到定义域外或渐近线时重新开始一段 */
 export function updateFunctionPath(shape: Shape): void {
   const formula = shape.formula;
-  if (formula === undefined || formula.minimum >= formula.maximum) {
+  if (
+    formula === undefined ||
+    !Number.isFinite(formula.minimum) ||
+    !Number.isFinite(formula.maximum) ||
+    Math.abs(formula.minimum) > MAX_MATH_COORDINATE ||
+    Math.abs(formula.maximum) > MAX_MATH_COORDINATE ||
+    formula.minimum >= formula.maximum
+  ) {
     throw new Error("函数范围的起点必须小于终点");
   }
   const compiled = compileExpression(formula.expression);
@@ -204,7 +221,8 @@ export function updateFunctionPath(shape: Shape): void {
 export function createFunctionShape(formula: FunctionDefinition): Shape {
   const shape = createShape("function", { x: 0, y: 0 });
   shape.formula = formula;
-  shape.name = ("y = " + formula.expression).slice(0, MAX_NAME_LENGTH);
+  const name = "y = " + formula.expression;
+  shape.name = name.slice(0, MAX_NAME_LENGTH);
   shape.fill = "none";
   shape.locked = true;
   updateFunctionPath(shape);

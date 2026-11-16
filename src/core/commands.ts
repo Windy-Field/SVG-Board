@@ -1,13 +1,23 @@
 import { getDeletionIds, updateRelations } from "../geometry/geometry";
 import { compareLayers } from "./model";
-import { createShape, getBounds, isDependent, MAX_SHAPES, moveShape, resizeShape } from "./model";
-import type { BoardDocument, RelationKind, Shape } from "./types";
+import {
+  createShape,
+  getBounds,
+  isDependent,
+  MAX_SHAPES,
+  MAX_NAME_LENGTH,
+  moveShape,
+  resizeShape
+} from "./model";
+import type { BoardDocument, ConstructionTool, Shape } from "./types";
 import { nextPointName } from "../objects/point-labels";
 
 // 粘贴副本相对原对象的偏移，单位为画布坐标
 const PASTE_OFFSET = 24;
 // 几何构造对象的默认颜色
 const CONSTRUCTION_COLOR = "#148063";
+// 复制对象的名称后缀，超过名称上限时先截短原名称
+const COPY_SUFFIX = " 副本";
 
 /** 删除选中对象和依赖它们的构造，返回被删除的对象数量 */
 export function deleteShapes(document: BoardDocument, selectedIds: string[]): number {
@@ -43,7 +53,8 @@ export function pasteShapes(document: BoardDocument, clipboard: Shape[]): string
       continue;
     }
     shape.id = id;
-    shape.name = shape.name + " 副本";
+    const name = shape.name.slice(0, MAX_NAME_LENGTH - COPY_SUFFIX.length);
+    shape.name = name + COPY_SUFFIX;
     if (!isDependent(shape) && shape.kind !== "function") {
       shape.locked = false;
     }
@@ -57,7 +68,7 @@ export function pasteShapes(document: BoardDocument, clipboard: Shape[]): string
         shape.relation.sources[index] = source;
       }
     }
-    if (!isDependent(shape)) {
+    if (!isDependent(shape) && shape.kind !== "function") {
       moveShape(shape, PASTE_OFFSET, PASTE_OFFSET);
     }
     shape.layer = document.shapes.length;
@@ -144,11 +155,11 @@ export function changeLayers(document: BoardDocument, selectedIds: string[], rai
   }
 }
 
-/** 根据选择创建几何对象，来源顺序统一为线段在前、经过的点在后 */
+/** 根据选择创建几何对象，平行线和垂线统一保存为线在前、点在后 */
 export function constructShape(
   document: BoardDocument,
   selected: Shape[],
-  kind: RelationKind
+  kind: ConstructionTool
 ): Shape {
   if (document.shapes.length >= MAX_SHAPES) {
     throw new Error("对象数量已达上限");
@@ -201,7 +212,7 @@ export function constructShape(
     } else if (kind === "midpoint") {
       message = "请选择一条线";
     } else if (kind === "intersection" || kind === "bisector") {
-      message = "请选择两条线段";
+      message = "请选择两条线";
     }
     throw new Error(message);
   }

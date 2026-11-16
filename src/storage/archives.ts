@@ -3,6 +3,7 @@ import { createDocument } from "../core/model";
 import type { BoardDocument } from "../core/types";
 import { archiveContent } from "./archive-content";
 import { createFlowTemplate, createGeometryTemplate } from "../objects/templates";
+import { isRecord } from "../core/validation";
 
 // 存档列表在浏览器中的存储键
 const ARCHIVE_KEY = "svg-board-archives-v1";
@@ -35,13 +36,7 @@ export class Archives {
       throw new Error("存档列表损坏");
     }
     for (const value of values) {
-      if (
-        typeof value !== "object" ||
-        value === null ||
-        !("id" in value) ||
-        !("document" in value) ||
-        typeof value.id !== "string"
-      ) {
+      if (!isRecord(value) || typeof value.id !== "string") {
         throw new Error("存档格式错误");
       }
       this.items.push({ id: value.id, document: parseDocument(JSON.stringify(value.document)) });

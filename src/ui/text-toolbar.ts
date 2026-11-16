@@ -1,6 +1,7 @@
 import { FONTS } from "./fonts";
 import type { Bounds, Shape } from "../core/types";
 import { MIN_FONT_SIZE, MAX_FONT_SIZE } from "../core/model";
+import { focusMenuOption } from "./menu-keyboard";
 
 // 浮动工具栏与画布边缘的最小距离，单位为屏幕像素
 const TOOLBAR_MARGIN = 8;
@@ -121,29 +122,12 @@ function handleFontKeyDown(event: KeyboardEvent): void {
     event.stopPropagation();
     return;
   }
-  const buttons = document.querySelectorAll<HTMLButtonElement>("#font-menu button");
-  if (buttons.length === 0) {
-    return;
-  }
-  let index = 0;
-  for (let current = 0; current < buttons.length; current = current + 1) {
-    if (buttons[current] === document.activeElement) {
-      index = current;
-    }
-  }
-  if (event.key === "ArrowDown") {
-    index = (index + 1) % buttons.length;
-  } else if (event.key === "ArrowUp") {
-    index = (index + buttons.length - 1) % buttons.length;
-  } else if (event.key === "Home") {
-    index = 0;
-  } else if (event.key === "End") {
-    index = buttons.length - 1;
-  } else {
+  const menu = document.getElementById("font-menu");
+  if (menu === null || !focusMenuOption(menu, event.key)) {
     return;
   }
   event.preventDefault();
-  buttons[index].focus();
+  event.stopPropagation();
 }
 
 /** 原生弹出层关闭时同步读屏可见的展开状态 */

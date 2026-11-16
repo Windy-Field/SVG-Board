@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { parseDocument } from "../../src/storage/document";
 import type { Point } from "../../src/core/types";
 import { readFileSync } from "node:fs";
-import { selectArchive } from "./helpers";
+import { selectArchive, testArtifact } from "./helpers";
 
 // 测试浏览器通道由运行环境指定
 const BROWSER_CHANNEL = process.env.PLAYWRIGHT_CHANNEL;
@@ -69,7 +69,7 @@ async function runEditorTest(page: Page): Promise<void> {
   await page.getByRole("button", { name: "导出 SVG", exact: true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toContain(".svg");
-  const savedPath = "test-results/roundtrip.svg";
+  const savedPath = testArtifact("roundtrip.svg");
   await download.saveAs(savedPath);
   await page.getByRole("button", { name: "关闭导出", exact: true }).click();
   await page.locator("#file-input").setInputFiles(savedPath);
@@ -79,7 +79,7 @@ async function runEditorTest(page: Page): Promise<void> {
   await page.getByRole("button", { name: "导出 PNG", exact: true }).click();
   const png = await pngPromise;
   expect(png.suggestedFilename()).toContain(".png");
-  await png.saveAs("test-results/roundtrip.png");
+  await png.saveAs(testArtifact("roundtrip.png"));
   expect(errors).toEqual([]);
 }
 /** 手动创建浏览器，绕开测试框架对解构参数的要求 */
@@ -147,7 +147,7 @@ async function runResponsiveTest(page: Page): Promise<void> {
       return darkPixels > 10;
     }
     await page.waitForFunction(hasDrawing);
-    await page.screenshot({ path: "test-results/editor-" + width + ".png" });
+    await page.screenshot({ path: testArtifact("editor-" + width + ".png") });
   }
   const displayed = await page.locator("#current-time").textContent();
   if (displayed !== null) {
@@ -200,7 +200,7 @@ async function runRelationshipTest(page: Page): Promise<void> {
   await page.mouse.down();
   await page.mouse.move(position.x, position.y + 70, { steps: 10 });
   await page.mouse.up();
-  await page.screenshot({ path: "test-results/drag-diagnostic.png" });
+  await page.screenshot({ path: testArtifact("drag-diagnostic.png") });
   expect(errors).toEqual([]);
   await expect(page.locator("#save-status")).toHaveText("已保存到此浏览器");
   const flow = parseDocument(await readSavedDocument(page));
@@ -218,7 +218,7 @@ async function runRelationshipTest(page: Page): Promise<void> {
   expect(moved.x).toBeGreaterThan(350);
   expect(midpoint.x).toBeCloseTo((moved.x + geometry.shapes[3].x) / 2, 4);
   expect(midpoint.y).toBeCloseTo((moved.y + geometry.shapes[3].y) / 2, 4);
-  await page.screenshot({ path: "test-results/geometry-desktop.png" });
+  await page.screenshot({ path: testArtifact("geometry-desktop.png") });
 }
 
 /** 用独立浏览器保证关系测试不受到其他测试的自动恢复数据影响 */
