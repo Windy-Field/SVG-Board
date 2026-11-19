@@ -196,7 +196,8 @@ function checkHtmlNode(file: string, html: string, node: DefaultTreeAdapterTypes
     ) {
       const start = location.startTag.endOffset;
       const end = location.endTag.startOffset;
-      const prefix = html.slice(0, start).replace(/[^\n]/g, " ");
+      const beforeScript = html.slice(0, start);
+      const prefix = beforeScript.replace(/[^\n]/g, " ");
       checkSource(file, prefix + html.slice(start, end));
     }
   }
