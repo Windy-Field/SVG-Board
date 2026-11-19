@@ -42,7 +42,7 @@ export class Archives {
       this.items.push({ id: value.id, document: parseDocument(JSON.stringify(value.document)) });
     }
     this.active = localStorage.getItem(ACTIVE_KEY) || "";
-    this.removeDuplicates();
+    this.replaceDuplicates(this.items, this.active);
   }
 
   /** 首次写入两份内置作品，之后删除作品也不会在刷新时重新出现 */
@@ -51,10 +51,24 @@ export class Archives {
       return;
     }
     const active = this.active;
-    this.create(createFlowTemplate());
-    this.create(createGeometryTemplate());
-    this.active = active;
-    this.persist();
+    const items = this.items.slice();
+    for (const document of [createFlowTemplate(), createGeometryTemplate()]) {
+      if (items.length >= ARCHIVE_LIMIT) {
+        break;
+      }
+      const key = archiveContent(document);
+      let exists = false;
+      for (const item of items) {
+        if (archiveContent(item.document) === key) {
+          exists = true;
+          break;
+        }
+      }
+      if (!exists) {
+        items.push({ id: crypto.randomUUID(), document: document });
+      }
+    }
+    this.persist(items, active);
     localStorage.setItem(SEEDED_KEY, "true");
   }
 
@@ -70,9 +84,9 @@ export class Archives {
       throw new Error("最多保留 " + ARCHIVE_LIMIT + " 个存档");
     }
     const item = { id: crypto.randomUUID(), document: structuredClone(document) };
-    this.items.push(item);
-    this.active = item.id;
-    this.persist();
+    const items = this.items.slice();
+    items.push(item);
+    this.persist(items, item.id);
     return structuredClone(item.document);
   }
 
@@ -83,29 +97,28 @@ export class Archives {
       this.create(document);
       return;
     }
-    item.document = structuredClone(document);
-    this.removeDuplicates();
-    this.persist();
+    const items = this.items.slice();
+    const index = items.indexOf(item);
+    items[index] = { id: item.id, document: structuredClone(document) };
+    this.replaceDuplicates(items, this.active);
   }
 
   /** 保留第一份相同内容，当前作品若重复则转到保留的存档 */
-  private removeDuplicates(): void {
+  private replaceDuplicates(items: Archive[], active: string): void {
     const unique: Archive[] = [];
     const keys = new Map<string, string>();
-    for (const item of this.items) {
+    for (const item of items) {
       const key = archiveContent(item.document);
       const existing = keys.get(key);
       if (existing === undefined) {
         unique.push(item);
         keys.set(key, item.id);
-      } else if (this.active === item.id) {
-        this.active = existing;
+      } else if (active === item.id) {
+        active = existing;
       }
     }
-    const changed = this.items.length !== unique.length;
-    this.items = unique;
-    if (changed) {
-      this.persist();
+    if (items !== this.items || items.length !== unique.length) {
+      this.persist(unique, active);
     }
   }
 
@@ -115,8 +128,10 @@ export class Archives {
     if (item === undefined) {
       throw new Error("存档不存在");
     }
-    this.active = id;
-    this.persist();
+    if (id !== this.active) {
+      localStorage.setItem(ACTIVE_KEY, id);
+      this.active = id;
+    }
     return structuredClone(item.document);
   }
 
@@ -128,18 +143,17 @@ export class Archives {
         remaining.push(item);
       }
     }
-    this.items = remaining;
     if (id !== this.active) {
-      this.persist();
+      this.persist(remaining, this.active);
       return null;
     }
-    if (this.items.length === 0) {
-      this.active = "";
-      return this.create(createDocument());
+    if (remaining.length === 0) {
+      const blank = { id: crypto.randomUUID(), document: createDocument() };
+      remaining.push(blank);
     }
-    this.active = this.items[this.items.length - 1].id;
-    this.persist();
-    return structuredClone(this.items[this.items.length - 1].document);
+    const next = remaining[remaining.length - 1];
+    this.persist(remaining, next.id);
+    return structuredClone(next.document);
   }
 
   /** 通过编号查找存档 */
@@ -152,9 +166,24 @@ export class Archives {
     return undefined;
   }
 
-  /** 先写入作品列表，再记录当前编号 */
-  private persist(): void {
-    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(this.items));
-    localStorage.setItem(ACTIVE_KEY, this.active);
+  /** 两个存储键都写入后才更新内存，列表写入失败时恢复原编号 */
+  private persist(items: Archive[], active: string): void {
+    const text = JSON.stringify(items);
+    const previous = localStorage.getItem(ACTIVE_KEY);
+    if (previous !== active) {
+      localStorage.setItem(ACTIVE_KEY, active);
+    }
+    try {
+      localStorage.setItem(ARCHIVE_KEY, text);
+    } catch (error) {
+      if (previous === null) {
+        localStorage.removeItem(ACTIVE_KEY);
+      } else if (previous !== active) {
+        localStorage.setItem(ACTIVE_KEY, previous);
+      }
+      throw error;
+    }
+    this.items = items;
+    this.active = active;
   }
 }
