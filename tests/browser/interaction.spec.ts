@@ -181,10 +181,12 @@ async function runPanSelection(page: Page): Promise<void> {
   expect(moved.shapes[0].x).toBeCloseTo(330, 4);
 }
 
-/** 检查 Shift 左键框选后的组合拖动，普通空白拖动保留给平移 */
+/** 组合后可从列表单独改属性，从画布拖动仍会移动整组 */
 async function runGroupSelection(page: Page): Promise<void> {
   const document = createDocument();
-  document.shapes.push(rectangle("甲", 150, 200), rectangle("乙", 450, 200));
+  const first = rectangle("甲", 150, 200);
+  const second = rectangle("乙", 450, 200);
+  document.shapes.push(first, second);
   await openDocument(page, document);
   const topLeft = await screenPoint(page, { x: 110, y: 160 });
   const bottomRight = await screenPoint(page, { x: 640, y: 330 });
@@ -193,12 +195,24 @@ async function runGroupSelection(page: Page): Promise<void> {
   await page.keyboard.up("Shift");
   await expect(page.locator("#selection-count")).toHaveText("已选择 2");
   await page.getByRole("button", { name: "组合", exact: true }).click();
-  await page.keyboard.press("Escape");
-  const center = await screenPoint(page, { x: 220, y: 245 });
+  await page.locator("#objects-tab").click();
+  const member = page.locator('[data-object-select="' + first.id + '"]');
+  await member.click();
+  await expect(page.locator("#selection-count")).toHaveText("已选择 1");
+  await page.locator("#properties-tab").click();
+  const position = page.getByRole("spinbutton", { name: "X", exact: true });
+  await position.fill("170");
+  await position.press("Tab");
+  const edited = await savedDocument(page);
+  expect(edited.shapes[0].x).toBe(170);
+  expect(edited.shapes[1].x).toBe(450);
+  expect(edited.shapes[0].group).not.toBe("");
+  expect(edited.shapes[0].group).toBe(edited.shapes[1].group);
+  const center = await screenPoint(page, { x: 240, y: 245 });
   await drag(page, center, { x: center.x + 40, y: center.y + 20 });
   const moved = await savedDocument(page);
-  expect(moved.shapes[0].x).toBeCloseTo(190, 4);
-  expect(moved.shapes[1].x - moved.shapes[0].x).toBeCloseTo(300, 4);
+  expect(moved.shapes[0].x).toBeCloseTo(210, 4);
+  expect(moved.shapes[1].x).toBeCloseTo(490, 4);
   await expect(page.locator("#selection-count")).toHaveText("已选择 2");
 }
 
@@ -320,6 +334,6 @@ test("连续绘制保留工具并支持主动选择调整", testDrawSelect);
 test("细线仅在笔画附近响应选择", testPreciseSelection);
 test("Shift 多选与锁定约束一致", testMultiSelection);
 test("空格平移保留选区并恢复拖动", testPanSelection);
-test("框选组合后首次拖动保持整体", testGroupSelection);
+test("组合成员可单独改属性且拖动保持整体", testGroupSelection);
 test("控制点缩放旋转保持选择", testControls);
 test("线段箭头可从笔画中间拖动", testStrokeDragging);

@@ -425,7 +425,7 @@ async function handleClick(event: MouseEvent): Promise<void> {
     return;
   }
   if (layer !== null) {
-    board.select(
+    board.selectObject(
       layer.getAttribute("data-object-select") || "",
       event.shiftKey || event.ctrlKey || event.metaKey
     );

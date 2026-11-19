@@ -437,7 +437,19 @@ export class BoardCanvas {
     this.fabric.requestRenderAll();
   }
 
-  /** 从对象列表选择对象，追加选择用于 Shift 多选 */
+  /** 从对象列表单独选择成员，修改属性时不展开所在组合 */
+  selectObject(id: string, append: boolean): void {
+    if (findShape(this.document, id) === undefined) {
+      return;
+    }
+    if (!append) {
+      this.selectedIds = [];
+    }
+    this.toggleSelectedId(id);
+    this.finishSelection();
+  }
+
+  /** 在画布上选择对象时，同组的可见成员一起选中 */
   select(id: string, append: boolean): void {
     const shape = findShape(this.document, id);
     if (shape === undefined) {
@@ -451,14 +463,24 @@ export class BoardCanvas {
         member.id === id ||
         (shape.group !== "" && member.group === shape.group && !member.hidden)
       ) {
-        const index = this.selectedIds.indexOf(member.id);
-        if (index < 0) {
-          this.selectedIds.push(member.id);
-        } else if (append) {
-          this.selectedIds.splice(index, 1);
-        }
+        this.toggleSelectedId(member.id);
       }
     }
+    this.finishSelection();
+  }
+
+  /** 将编号加入选区，已选中时移出选区 */
+  private toggleSelectedId(id: string): void {
+    const index = this.selectedIds.indexOf(id);
+    if (index < 0) {
+      this.selectedIds.push(id);
+    } else {
+      this.selectedIds.splice(index, 1);
+    }
+  }
+
+  /** 同步画布选框和右侧面板 */
+  private finishSelection(): void {
     this.restoreSelection();
     this.fabric.requestRenderAll();
     this.callbacks.selected();
@@ -1535,7 +1557,7 @@ export class BoardCanvas {
       return;
     }
     const id = this.ids.get(hit.target);
-    if (id === undefined || this.selectedIds.includes(id)) {
+    if (id === undefined || (this.selectedIds.length > 1 && this.selectedIds.includes(id))) {
       return;
     }
     const shape = findShape(this.document, id);
