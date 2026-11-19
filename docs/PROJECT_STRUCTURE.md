@@ -91,6 +91,7 @@ SVG-Board/
 | [construction-tools.ts](../src/geometry/construction-tools.ts) | 判断几何工具所需的来源数量和类型，支持先选工具或先选对象两种方式         |
 | [extended-lines.ts](../src/geometry/extended-lines.ts)         | 根据显示范围裁剪射线和直线                                               |
 | [outlines.ts](../src/geometry/outlines.ts)                     | 提取图形边框上的点，供吸附和框选使用                                     |
+| [point-attachment.ts](../src/geometry/point-attachment.ts)    | 将几何点依附到边框或曲线，拖动和来源变形后重新计算位置                   |
 | [snapping.ts](../src/geometry/snapping.ts)                     | 按交点、端点与顶点、边框、网格的顺序寻找吸附位置，也处理曲线和坐标轴     |
 | [marquee.ts](../src/geometry/marquee.ts)                       | 判断框选范围是否覆盖图形笔画                                             |
 
