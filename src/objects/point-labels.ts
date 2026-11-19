@@ -1,4 +1,4 @@
-import { createShape, MAX_SHAPES } from "../core/model";
+import { createShape, MAX_NAME_LENGTH, MAX_SHAPES } from "../core/model";
 import type { BoardDocument, Shape } from "../core/types";
 
 // 点名相对点中心的默认水平偏移
@@ -45,7 +45,7 @@ export function addPointLabel(document: BoardDocument, point: Shape): Shape | nu
     return null;
   }
   const label = createShape("text", { x: point.x + LABEL_OFFSET_X, y: point.y + LABEL_OFFSET_Y });
-  label.name = point.text;
+  label.name = point.text.slice(0, MAX_NAME_LENGTH);
   label.text = point.text;
   label.width = Math.max(LABEL_MIN_WIDTH, point.text.length * point.fontSize);
   label.height = point.fontSize * LABEL_LINE_HEIGHT;

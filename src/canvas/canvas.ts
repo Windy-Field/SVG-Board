@@ -13,10 +13,13 @@ import { OverlapSelection } from "./overlap-selection";
 import { CurveControls } from "./curve-controls";
 import { EditorCanvas } from "./editor-canvas";
 import { constructShape } from "../core/commands";
+import { constructSelection } from "../core/construction-batch";
+import type { ConstructionResult } from "../core/construction-batch";
 import { strokeInMarquee } from "../geometry/marquee";
 import { detachLabel } from "../objects/shape-labels";
 import { regularPoints, fitPolygon } from "../objects/shapes";
 import { isConstructionLine, updateRelations } from "../geometry/geometry";
+import { hasOpenDomain } from "../math/domain";
 import { drawAxes } from "./axes";
 import {
   createShape,
@@ -96,6 +99,8 @@ const POLYGON_PREVIEW_FILL = "#2563eb11";
 /** 画布通过回调报告作品、选择和视口变化 */
 export interface CanvasCallbacks {
   changed(): void;
+  draftChanged(): void;
+  constructed(result: ConstructionResult): void;
   selected(): void;
   viewChanged(): void;
   editText(id: string): void;
@@ -210,6 +215,7 @@ export class BoardCanvas {
     this.fabric.on("object:rotating", this.handleTransforming.bind(this));
     this.fabric.on("object:modified", this.handleModified.bind(this));
     this.fabric.on("text:editing:exited", this.handleTextExited.bind(this));
+    this.fabric.on("text:changed", callbacks.draftChanged);
     this.fabric.on("path:created", this.handlePathCreated.bind(this));
     this.fabric.on("object:modifyPath", this.handleTransforming.bind(this));
     this.fabric.on("before:render", this.drawGrid.bind(this));
@@ -231,18 +237,21 @@ export class BoardCanvas {
 
   /** 首次取得容器尺寸后适应画板，之后保留用户视角 */
   private handleResize(): void {
-    this.fabric.setDimensions({
-      width: Math.max(1, this.host.clientWidth),
-      height: Math.max(1, this.host.clientHeight)
-    });
+    const width = Math.max(1, this.host.clientWidth);
+    const height = Math.max(1, this.host.clientHeight);
+    if (this.initialFit && width === this.fabric.getWidth() && height === this.fabric.getHeight()) {
+      return;
+    }
+    this.fabric.setDimensions({ width: width, height: height });
     if (!this.initialFit) {
       this.initialFit = true;
       this.fit();
-    } else {
-      this.fabric.requestRenderAll();
+      return;
     }
-    this.callbacks.viewChanged();
+    // 改尺寸会清空画布，在浏览器显示这一帧前恢复内容
     this.refreshExtendedLines();
+    this.fabric.renderAll();
+    this.callbacks.viewChanged();
   }
 
   /** 返回已选中的作品对象，忽略已经删除的编号 */
@@ -255,6 +264,17 @@ export class BoardCanvas {
       }
     }
     return selected;
+  }
+
+  /** 原地编辑的文字尚未写回作品时返回 true */
+  hasTextDraft(): boolean {
+    const object = this.fabric.getActiveObject();
+    if (!(object instanceof Textbox) || !object.isEditing) {
+      return false;
+    }
+    const id = this.ids.get(object);
+    const shape = findShape(this.document, id || "");
+    return shape !== undefined && object.text !== shape.text;
   }
 
   /** 返回选区在工作区内的位置，供浮动文本工具栏使用 */
@@ -390,7 +410,7 @@ export class BoardCanvas {
   }
 
   /** 视口范围只影响无限线的显示，不改变保存的两个方向点 */
-  private viewBounds(): Bounds {
+  viewBounds(): Bounds {
     return {
       x: -this.viewport.x / this.viewport.zoom,
       y: -this.viewport.y / this.viewport.zoom,
@@ -399,13 +419,13 @@ export class BoardCanvas {
     };
   }
 
-  /** 平移或缩放后重新裁剪直线和射线，不生成极大尺寸的离屏画布 */
+  /** 平移或缩放后重新计算无限图形的可见部分 */
   private refreshExtendedLines(): void {
     if (this.transforming || this.rebuilding) {
       return;
     }
     for (const shape of this.document.shapes) {
-      if (shape.kind === "line" && shape.lineType !== "segment") {
+      if ((shape.kind === "line" && shape.lineType !== "segment") || hasOpenDomain(shape.formula)) {
         const object = this.objects.get(shape.id);
         if (object !== undefined) {
           updateFabricGeometry(object, shape, this.viewBounds());
@@ -866,6 +886,7 @@ export class BoardCanvas {
       const line = constructShape(this.document, [first, point], "segment");
       this.selectedIds = [line.id];
       this.segmentStart = "";
+      this.callbacks.notify("已创建两点直线");
     }
     this.render();
     this.callbacks.changed();
@@ -903,10 +924,23 @@ export class BoardCanvas {
       this.constructionIds.push(candidate.id);
       this.selectedIds = this.constructionIds.slice();
       if (selected.length === constructionSourceCount(this.tool)) {
-        const result = constructShape(this.document, selected, this.tool);
-        addPointLabel(this.document, result);
-        this.selectedIds = [result.id];
         this.constructionIds = [];
+        this.finishConstruction(selected, this.tool);
+      } else {
+        this.restoreSelection();
+        this.fabric.requestRenderAll();
+        this.callbacks.selected();
+      }
+      return;
+    }
+  }
+
+  /** 完成点选构造，重复交点不写入作品或撤销历史 */
+  private finishConstruction(sources: Shape[], kind: ConstructionTool): void {
+    try {
+      const result = constructSelection(this.document, sources, kind);
+      if (result.created.length > 0) {
+        this.selectedIds = [result.created[0].id];
         this.render();
         this.callbacks.changed();
       } else {
@@ -914,7 +948,11 @@ export class BoardCanvas {
         this.fabric.requestRenderAll();
         this.callbacks.selected();
       }
-      return;
+      this.callbacks.constructed(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        this.callbacks.notify(error.message);
+      }
     }
   }
 

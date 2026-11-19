@@ -1,9 +1,11 @@
-import { Circle, Ellipse, Line, Path, Polygon, Rect, Textbox } from "fabric";
+import { Circle, Ellipse, FabricImage, Line, Path, Polygon, Rect, Textbox } from "fabric";
 import type { FabricObject } from "fabric";
 import { getBounds } from "../core/model";
 import type { Bounds, Shape } from "../core/types";
 import { extendedLinePoints } from "../geometry/extended-lines";
-import { functionLabelAnchor, getFunctionLabel } from "../math/plots";
+import { functionLabelAnchor, getFunctionLabel, updateFunctionPath } from "../math/plots";
+import { hasOpenDomain } from "../math/domain";
+import { svgImageUrl } from "../storage/svg-image";
 import { curvePath, regularPoints } from "../objects/shapes";
 
 // 控制点大小，单位为屏幕像素
@@ -33,6 +35,10 @@ const LABEL_CHARACTER_RATIO = 0.65;
 
 /** 根据作品创建库中的几何对象，控制点与变换交给 Fabric */
 export function createFabricShape(shape: Shape, clip?: Bounds): FabricObject {
+  if (clip !== undefined && hasOpenDomain(shape.formula)) {
+    shape = structuredClone(shape);
+    updateFunctionPath(shape, clip);
+  }
   const bounds = getBounds(shape);
   const width = Math.max(1, bounds.width);
   const height = Math.max(1, bounds.height);
@@ -54,10 +60,29 @@ export function createFabricShape(shape: Shape, clip?: Bounds): FabricObject {
     object = new Line([points[0].x, points[0].y, points[1].x, points[1].y]);
   } else if (shape.kind === "arrow" || shape.kind === "connector") {
     object = createArrow(shape);
-  } else if (shape.kind === "pencil") {
+  } else if (shape.kind === "svg-image" && shape.svgImage !== undefined) {
+    const source = shape.svgImage;
+    const image = new Image(source.width, source.height);
+    const picture = new FabricImage(image, {
+      scaleX: width / source.width,
+      scaleY: height / source.height
+    });
+    /** 图片解码完成后刷新画布，不需要重建对象或提交编辑 */
+    function showImage(): void {
+      if (picture.canvas !== undefined) {
+        picture.canvas.requestRenderAll();
+      }
+    }
+    image.addEventListener("load", showImage, { once: true });
+    image.src = svgImageUrl(source);
+    object = picture;
+  } else if (shape.kind === "pencil" || shape.kind === "path") {
     object = new Path(shape.path, { fill: "" });
-    if (object.width > 0 && object.height > 0) {
-      object.set({ scaleX: width / object.width, scaleY: height / object.height });
+    if (object.width > 0) {
+      object.scaleX = width / object.width;
+    }
+    if (object.height > 0) {
+      object.scaleY = height / object.height;
     }
   } else if (shape.kind === "polygon") {
     let points = shape.points;
@@ -70,7 +95,7 @@ export function createFabricShape(shape: Shape, clip?: Bounds): FabricObject {
     }
   } else if (shape.kind === "curve" || shape.kind === "function") {
     let path = shape.path;
-    if (path === "") {
+    if (path === "" && shape.kind === "curve") {
       path = curvePath(shape);
     }
     object = new Path(path, { fill: "" });
@@ -112,6 +137,15 @@ export function createFabricShape(shape: Shape, clip?: Bounds): FabricObject {
   }
   let stroke = shape.stroke;
   let strokeWidth = shape.strokeWidth;
+  if (stroke === "none") {
+    stroke = "";
+    strokeWidth = 0;
+  }
+  if (shape.kind === "svg-image") {
+    fill = "";
+    stroke = "";
+    strokeWidth = 0;
+  }
   if (shape.kind === "text") {
     fill = shape.stroke;
     stroke = "";

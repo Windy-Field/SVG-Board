@@ -42,17 +42,15 @@
   border-radius: 4px;
 }
 .inspector-tabs {
-  justify-content: center;
+  /* 标题列宽不随对象数量变化 */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   gap: 4px;
   padding: 0 8px;
 }
 .inspector-tabs button {
   font-size: 18px;
-  flex: 1;
   text-align: center;
-}
-.inspector-tabs #objects-tab {
-  flex: 1.7;
 }
 .object-row {
   align-items: center;
@@ -69,7 +67,12 @@
   min-width: 30px;
 }
 .inspector-tabs span {
+  display: inline-block;
+  min-width: 4ch;
+  margin-left: 0;
   font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 .inspector h2 {
   font-size: 18px;
@@ -97,7 +100,14 @@
   padding: 8px 0;
 }
 .workspace {
+  --inspector-width: 300px;
+  grid-template-columns: 72px minmax(0, 1fr) var(--inspector-width);
   container-type: size;
+}
+.inspector {
+  /* 收起时保持内容宽度，画布只需调整一次尺寸 */
+  width: var(--inspector-width);
+  justify-self: end;
 }
 .tools .tool-button,
 .tools .icon-button {
@@ -175,6 +185,9 @@
   background: var(--color-paper);
 }
 @media (max-width: 60rem) {
+  .inspector-tabs button {
+    font-size: 16px;
+  }
   #app {
     grid-template-rows: 112px minmax(0, 1fr) 38px;
   }
@@ -199,7 +212,8 @@
     grid-row: 1;
   }
   .workspace {
-    grid-template-columns: 60px minmax(0, 1fr) 260px;
+    --inspector-width: 260px;
+    grid-template-columns: 60px minmax(0, 1fr) var(--inspector-width);
   }
   .workspace.inspector-hidden {
     grid-template-columns: 60px minmax(0, 1fr) 0px;

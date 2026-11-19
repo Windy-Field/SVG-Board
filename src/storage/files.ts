@@ -3,8 +3,10 @@ import { StaticCanvas } from "fabric";
 import { createFabricLabel, createFabricShape } from "../canvas/fabric-shapes";
 import { updateRelations } from "../geometry/geometry";
 import { compareLayers } from "../core/model";
-import type { BoardDocument, Shape } from "../core/types";
+import type { BoardDocument, Bounds, Shape } from "../core/types";
 import { prepareDocument, contentBounds, visualBounds } from "./content";
+import { importSvg } from "./svg-import";
+import { SVG_NAMESPACE } from "./svg-image";
 
 // 导出图形四周留白，单位为画布坐标
 const EXPORT_PADDING = 32;
@@ -20,6 +22,8 @@ export interface ExportOptions {
   crop: boolean;
   transparent: boolean;
   hideAuxiliary: boolean;
+  area?: Bounds;
+  includeProject?: boolean;
 }
 
 /** 生成独立 SVG，并嵌入经过校验的项目元数据以便再次编辑 */
@@ -35,23 +39,9 @@ export function createSvg(document: BoardDocument, options: ExportOptions): stri
     }
     visible.push(shape);
   }
-  let bounds = contentBounds(document);
-  if (options.crop) {
-    const visibleBounds = visualBounds(visible);
-    if (visibleBounds !== null) {
-      bounds = {
-        x: visibleBounds.x - EXPORT_PADDING,
-        y: visibleBounds.y - EXPORT_PADDING,
-        width: Math.max(1, visibleBounds.width + EXPORT_PADDING * 2),
-        height: Math.max(1, visibleBounds.height + EXPORT_PADDING * 2)
-      };
-    }
-  }
-  const canvas = new StaticCanvas(undefined, {
-    width: bounds.width,
-    height: bounds.height,
-    renderOnAddRemove: false
-  });
+  const bounds = exportBounds(document, visible, options);
+  // 只生成 SVG 字符串，不需要为整个导出范围分配像素画布
+  const canvas = new StaticCanvas(undefined, { width: 1, height: 1, renderOnAddRemove: false });
   if (!options.transparent) {
     canvas.backgroundColor = document.background;
   }
@@ -63,14 +53,41 @@ export function createSvg(document: BoardDocument, options: ExportOptions): stri
       canvas.add(label);
     }
   }
-  const svg = canvas.toSVG({ suppressPreamble: true, viewBox: bounds });
+  const svg = canvas.toSVG({
+    suppressPreamble: true,
+    viewBox: bounds,
+    width: String(bounds.width),
+    height: String(bounds.height)
+  });
   canvas.destroy();
+  if (options.includeProject === false) {
+    return svg;
+  }
   const xml = new DOMParser().parseFromString(svg, "image/svg+xml");
-  const metadata = xml.createElementNS("http://www.w3.org/2000/svg", "metadata");
+  const metadata = xml.createElementNS(SVG_NAMESPACE, "metadata");
   metadata.setAttribute("id", "svg-board-project");
   metadata.textContent = JSON.stringify(prepareDocument(document));
   xml.documentElement.prepend(metadata);
   return new XMLSerializer().serializeToString(xml.documentElement);
+}
+
+/** 使用指定区域，或围绕可见对象计算带留白的导出边界 */
+function exportBounds(document: BoardDocument, visible: Shape[], options: ExportOptions): Bounds {
+  if (options.area !== undefined) {
+    return options.area;
+  }
+  if (options.crop) {
+    const visibleBounds = visualBounds(visible);
+    if (visibleBounds !== null) {
+      return {
+        x: visibleBounds.x - EXPORT_PADDING,
+        y: visibleBounds.y - EXPORT_PADDING,
+        width: Math.max(1, visibleBounds.width + EXPORT_PADDING * 2),
+        height: Math.max(1, visibleBounds.height + EXPORT_PADDING * 2)
+      };
+    }
+  }
+  return contentBounds(document);
 }
 
 /** 下载二进制内容，使用独立链接并延迟回收地址 */
@@ -105,7 +122,7 @@ export function saveProject(document: BoardDocument): void {
   );
 }
 
-/** 打开项目或本工具生成的 SVG，仅提取元数据，不把外部 SVG 插入页面 */
+/** 优先恢复项目数据，普通 SVG 按图元或整图导入 */
 export async function openProject(file: File): Promise<BoardDocument> {
   if (file.size > MAX_FILE_BYTES) {
     throw new Error("文件不能超过 8 MB");
@@ -114,14 +131,21 @@ export async function openProject(file: File): Promise<BoardDocument> {
   const trimmed = text.trimStart();
   if (trimmed.startsWith("<")) {
     const xml = new DOMParser().parseFromString(text, "image/svg+xml");
-    if (xml.querySelector("parsererror") !== null) {
+    const root = xml.documentElement;
+    if (
+      root.localName !== "svg" ||
+      (root.namespaceURI !== SVG_NAMESPACE && root.namespaceURI !== null)
+    ) {
       throw new Error("SVG 文件格式损坏");
     }
-    const metadata = xml.querySelector("metadata#svg-board-project");
-    if (metadata === null || metadata.textContent === null) {
-      throw new Error("SVG 不含本工具的编辑信息");
+    const metadata = root.querySelector(":scope > metadata#svg-board-project");
+    if (metadata !== null && metadata.textContent !== null) {
+      return parseDocument(metadata.textContent);
     }
-    return parseDocument(metadata.textContent);
+    if (root.namespaceURI === null) {
+      root.setAttribute("xmlns", SVG_NAMESPACE);
+    }
+    return importSvg(root, file.name);
   }
   return parseDocument(text);
 }

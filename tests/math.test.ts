@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compileExpression, evaluateExpression } from "../src/math/expressions";
 import { parseCoordinatePoints, toCanvasPoint, toMathPoint } from "../src/math/coordinates";
-import { createFunctionShape, fitPolynomial, getFunctionLabel } from "../src/math/plots";
+import {
+  createFunctionShape,
+  fitPolynomial,
+  getFunctionLabel,
+  updateFunctionPath
+} from "../src/math/plots";
+import { readDomainMaximum, readDomainMinimum } from "../src/math/domain";
 import { createDocument, createShape } from "../src/core/model";
 import { parseDocument } from "../src/storage/document";
 import { constructShape } from "../src/core/commands";
@@ -75,6 +81,41 @@ function testFunctionPath(): void {
   assert.equal(restored.shapes[0].path, shape.path);
 }
 test("函数断点路径与属性保存", testFunctionPath);
+
+/** 无穷端点可以往返存档，并在默认范围外按视口计算 */
+function testOpenDomain(): void {
+  const shape = createFunctionShape({
+    expression: "0",
+    minimum: 2,
+    maximum: "inf",
+    degree: 0,
+    coefficients: []
+  });
+  const board = createDocument();
+  board.shapes.push(shape);
+  const restored = parseDocument(JSON.stringify(board));
+  const curve = restored.shapes[0];
+  assert.deepEqual(curve.formula, shape.formula);
+  const left = toCanvasPoint({ x: 200, y: 1 });
+  updateFunctionPath(curve, { x: left.x, y: left.y, width: 400, height: 80 });
+  assert.equal(curve.x, left.x);
+  assert.equal(curve.width, 400);
+  updateFunctionPath(curve, { x: 0, y: 0, width: 100, height: 100 });
+  assert.equal(curve.path, "");
+  assert.equal(readDomainMinimum(" -INF ", true), "-inf");
+  assert.equal(readDomainMaximum("+inf", true), "inf");
+  /** 拟合范围不接受无穷端点 */
+  function badFitBound(): void {
+    readDomainMaximum("inf", false);
+  }
+  /** 左端点不能是正无穷 */
+  function badLeftBound(): void {
+    readDomainMinimum("inf", true);
+  }
+  assert.throws(badFitBound);
+  assert.throws(badLeftBound);
+}
+test("普通函数无穷端点保存并按视口采样", testOpenDomain);
 
 /** 多项式拟合复用库的最小二乘算法，来源点移动后重新计算 */
 function testFitting(): void {

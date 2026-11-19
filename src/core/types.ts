@@ -10,9 +10,11 @@ export type ShapeKind =
   | "connector"
   | "polygon"
   | "curve"
-  | "function";
+  | "function"
+  | "path"
+  | "svg-image";
 export type Tool =
-  | ShapeKind
+  | Exclude<ShapeKind, "path" | "svg-image">
   | "select"
   | "hand"
   | "vertical-text"
@@ -41,8 +43,8 @@ export type RelationKind =
 /** 保存函数解析式、绘制范围和拟合阶数，系数按常数项到最高次项排列 */
 export interface FunctionDefinition {
   expression: string;
-  minimum: number;
-  maximum: number;
+  minimum: number | "-inf";
+  maximum: number | "inf";
   degree: number;
   coefficients: number[];
 }
@@ -70,6 +72,7 @@ export interface Shape {
   lineType: "segment" | "ray" | "straight";
   coordinatePoint: boolean;
   formula?: FunctionDefinition;
+  svgImage?: SvgImage;
   name: string;
   x: number;
   y: number;
@@ -101,6 +104,13 @@ export interface Shape {
   layer: number;
   path: string;
   relation: Relation;
+}
+
+/** 保留不能拆解的 SVG 源文件与原始显示尺寸 */
+export interface SvgImage {
+  source: string;
+  width: number;
+  height: number;
 }
 
 /** 项目文件只保存作品内容，选择状态和撤销记录不写入文件 */

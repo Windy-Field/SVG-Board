@@ -81,7 +81,9 @@ export const SHAPE_LABELS: Record<ShapeKind, string> = {
   connector: "连接线",
   polygon: "多边形",
   curve: "贝塞尔曲线",
-  function: "函数"
+  function: "函数",
+  path: "SVG 路径",
+  "svg-image": "SVG 图像"
 };
 
 /** 新建空白作品，返回可保存为项目文件的完整结构 */
@@ -270,5 +272,10 @@ export class History {
   /** 返回当前是否存在撤销后尚未恢复的作品快照 */
   canRedo(): boolean {
     return this.index < this.snapshots.length - 1;
+  }
+
+  /** 返回当前编辑分支的快照，回放不会移动撤销指针 */
+  replayFrames(): string[] {
+    return this.snapshots.slice(0, this.index + 1);
   }
 }

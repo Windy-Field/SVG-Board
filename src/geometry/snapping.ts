@@ -4,6 +4,8 @@ import { GRID_SIZE, isLine, getRotatedBounds } from "../core/model";
 import { outlinePoints } from "./outlines";
 import type { BoardDocument, Point } from "../core/types";
 import { ORIGIN_X, ORIGIN_Y } from "../math/coordinates";
+import { hasOpenDomain } from "../math/domain";
+import { updateFunctionPath } from "../math/plots";
 
 // 光标吸附范围，单位为屏幕像素
 const SNAP_DISTANCE = 10;
@@ -74,12 +76,22 @@ export function snapPosition(
     addEdge(pointer, vertical, "axis-vertical", radius, edges, projections);
     vertices.push({ x: ORIGIN_X, y: ORIGIN_Y });
   }
-  for (const shape of document.shapes) {
+  for (const item of document.shapes) {
+    let shape = item;
     if (shape.id === excluded || shape.hidden) {
       continue;
     }
     if (shape.relation.kind === "label" && shape.relation.sources[0] === excluded) {
       continue;
+    }
+    if (hasOpenDomain(shape.formula)) {
+      shape = structuredClone(item);
+      updateFunctionPath(shape, {
+        x: position.x - radius * 2,
+        y: position.y - radius * 2,
+        width: radius * 4,
+        height: radius * 4
+      });
     }
     const bounds = getRotatedBounds(shape);
     const outside =

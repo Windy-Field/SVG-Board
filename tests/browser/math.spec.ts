@@ -128,7 +128,7 @@ async function checkCoordinates(page: Page): Promise<void> {
   expect(created.shapes[2].name).toBe("C");
   expect(created.shapes[3].text).toBe("A");
   expect(created.shapes[1].x).toBe(toCanvasPoint({ x: 2, y: 3 }).x);
-  const opacity = page.getByRole("spinbutton", { name: "透明度", exact: true });
+  const opacity = page.getByRole("slider", { name: "透明度", exact: true });
   await opacity.fill("0.4");
   await opacity.press("Tab");
   const styled = await saved(page);
@@ -160,10 +160,10 @@ async function checkFunction(page: Page): Promise<void> {
   await page.getByRole("button", { name: "导出", exact: true }).click();
   expect(await page.evaluate(readPreviewLabels)).toContain("y = sin(x)");
   await page.getByRole("button", { name: "关闭导出", exact: true }).click();
-  const opacity = page.getByRole("spinbutton", { name: "透明度", exact: true });
+  const opacity = page.getByRole("slider", { name: "透明度", exact: true });
   await opacity.fill("0.5");
   await opacity.press("Tab");
-  const width = page.getByRole("spinbutton", { name: "线宽", exact: true });
+  const width = page.getByRole("slider", { name: "线宽", exact: true });
   await width.fill("4");
   await width.press("Tab");
   const expression = page.getByRole("textbox", { name: "函数解析式", exact: true });
@@ -439,6 +439,39 @@ async function testAxisSnap(): Promise<void> {
   await run(checkAxisSnap);
 }
 
+/** 验证函数无穷端点、存档恢复与键盘连续调节滑块 */
+async function checkInfiniteDomain(page: Page): Promise<void> {
+  await open(page);
+  await page.getByRole("button", { name: "函数绘制", exact: true }).click();
+  await page.locator("#math-minimum").fill("-INF");
+  await page.locator("#math-maximum").fill("+inf");
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(page.locator("#math-dialog")).toBeHidden();
+  const created = await saved(page);
+  const formula = created.shapes[0].formula;
+  if (formula === undefined) {
+    throw new Error("作品缺少函数定义");
+  }
+  expect(formula.minimum).toBe("-inf");
+  expect(formula.maximum).toBe("inf");
+  const opacity = page.getByRole("slider", { name: "透明度", exact: true });
+  await opacity.press("ArrowLeft");
+  await expect(opacity).toBeFocused();
+  await opacity.press("ArrowLeft");
+  expect((await saved(page)).shapes[0].opacity).toBe(0.98);
+  await page.reload();
+  await page.locator("#objects-tab").click();
+  await page.locator('[data-object-select="' + created.shapes[0].id + '"]').click();
+  await page.locator("#properties-tab").click();
+  await expect(page.getByRole("textbox", { name: "结束 x", exact: true })).toHaveValue("inf");
+}
+
+/** 使用实际工作台验证无穷定义域和滑块 */
+async function testInfiniteDomain(): Promise<void> {
+  await run(checkInfiniteDomain);
+}
+
+test("普通函数保存无穷定义域且滑块支持连续方向键", testInfiniteDomain);
 test("批量坐标点与透明度属性", testCoordinates);
 test("函数绘制属性与快捷键隐藏", testFunction);
 test("多项式拟合来源点联动", testFit);

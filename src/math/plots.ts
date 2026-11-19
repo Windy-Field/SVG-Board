@@ -1,14 +1,10 @@
 import { PolynomialRegression } from "ml-regression-polynomial";
 import { format } from "mathjs";
 import { compileExpression, evaluateExpression } from "./expressions";
-import {
-  toCanvasPoint,
-  toMathPoint,
-  MAX_COORDINATE_POINTS,
-  MAX_MATH_COORDINATE
-} from "./coordinates";
+import { toCanvasPoint, toMathPoint, MAX_COORDINATE_POINTS } from "./coordinates";
 import { createShape, MAX_COORDINATE, MAX_NAME_LENGTH } from "../core/model";
-import type { FunctionDefinition, Point, Shape } from "../core/types";
+import type { Bounds, FunctionDefinition, Point, Shape } from "../core/types";
+import { hasOpenDomain, readDomainMaximum, readDomainMinimum } from "./domain";
 
 // 默认函数绘制范围，单位为数学坐标
 export const DEFAULT_DOMAIN_MINIMUM = -10;
@@ -29,6 +25,39 @@ const LABEL_PRECISION = 6;
 const LABEL_ZERO_RATIO = 0.00000001;
 // 曲线说明优先靠近的数学横坐标
 const LABEL_POSITION_X = 1;
+// 无穷曲线用于首次适应画布和自动裁剪导出的默认宽度，单位为数学坐标
+const OPEN_DOMAIN_SPAN = 20;
+
+/** 把无穷范围截成可采样区间；未提供视口时用有限窗口保存预览 */
+function samplingRange(formula: FunctionDefinition, clip?: Bounds): { start: number; end: number } {
+  const minimum = readDomainMinimum(formula.minimum, formula.degree === 0);
+  const maximum = readDomainMaximum(formula.maximum, formula.degree === 0);
+  let start = DEFAULT_DOMAIN_MINIMUM;
+  let end = DEFAULT_DOMAIN_MAXIMUM;
+  if (typeof minimum === "number") {
+    start = minimum;
+    end = Math.max(end, start + OPEN_DOMAIN_SPAN);
+  }
+  if (typeof maximum === "number") {
+    end = maximum;
+    if (minimum === "-inf") {
+      start = Math.min(start, end - OPEN_DOMAIN_SPAN);
+    }
+  }
+  if (clip !== undefined && hasOpenDomain(formula)) {
+    const left = toMathPoint({ x: clip.x, y: 0 });
+    const right = toMathPoint({ x: clip.x + clip.width, y: 0 });
+    start = left.x;
+    end = right.x;
+    if (typeof minimum === "number") {
+      start = Math.max(start, minimum);
+    }
+    if (typeof maximum === "number") {
+      end = Math.min(end, maximum);
+    }
+  }
+  return { start: start, end: end };
+}
 
 /** 生成人能直接阅读的解析式，计算仍使用未舍入的原始系数 */
 export function getFunctionLabel(shape: Shape): string {
@@ -84,13 +113,9 @@ export function functionLabelAnchor(shape: Shape): Point {
   const formula = shape.formula;
   if (formula !== undefined) {
     const compiled = compileExpression(formula.expression);
-    const preferred = Math.max(formula.minimum, Math.min(formula.maximum, LABEL_POSITION_X));
-    const positions = [
-      preferred,
-      (formula.minimum + formula.maximum) / 2,
-      formula.minimum,
-      formula.maximum
-    ];
+    const range = samplingRange(formula);
+    const preferred = Math.max(range.start, Math.min(range.end, LABEL_POSITION_X));
+    const positions = [preferred, (range.start + range.end) / 2, range.start, range.end];
     for (const horizontal of positions) {
       const vertical = evaluateExpression(compiled, horizontal);
       if (vertical !== null) {
@@ -161,16 +186,13 @@ export function fitPolynomial(
 }
 
 /** 生成分段采样路径，遇到定义域外或渐近线时重新开始一段 */
-export function updateFunctionPath(shape: Shape): void {
+export function updateFunctionPath(shape: Shape, clip?: Bounds): void {
   const formula = shape.formula;
-  if (
-    formula === undefined ||
-    !Number.isFinite(formula.minimum) ||
-    !Number.isFinite(formula.maximum) ||
-    Math.abs(formula.minimum) > MAX_MATH_COORDINATE ||
-    Math.abs(formula.maximum) > MAX_MATH_COORDINATE ||
-    formula.minimum >= formula.maximum
-  ) {
+  if (formula === undefined) {
+    throw new Error("缺少函数定义");
+  }
+  const range = samplingRange(formula, clip);
+  if (clip === undefined && range.start >= range.end) {
     throw new Error("函数范围的起点必须小于终点");
   }
   const compiled = compileExpression(formula.expression);
@@ -180,16 +202,25 @@ export function updateFunctionPath(shape: Shape): void {
   let right = -Infinity;
   let top = Infinity;
   let bottom = -Infinity;
-  for (let index = 0; index <= SAMPLE_COUNT; index = index + 1) {
-    const horizontal =
-      formula.minimum + ((formula.maximum - formula.minimum) * index) / SAMPLE_COUNT;
+  for (let index = 0; range.start < range.end && index <= SAMPLE_COUNT; index = index + 1) {
+    const horizontal = range.start + ((range.end - range.start) * index) / SAMPLE_COUNT;
     const vertical = evaluateExpression(compiled, horizontal);
     if (vertical === null) {
       previous = null;
       continue;
     }
     const point = toCanvasPoint({ x: horizontal, y: vertical });
-    if (Math.abs(point.x) > MAX_PLOT_POSITION || Math.abs(point.y) > MAX_PLOT_POSITION) {
+    if (
+      clip === undefined &&
+      (Math.abs(point.x) > MAX_PLOT_POSITION || Math.abs(point.y) > MAX_PLOT_POSITION)
+    ) {
+      previous = null;
+      continue;
+    }
+    if (
+      clip !== undefined &&
+      (point.y < clip.y - MAX_SAMPLE_JUMP || point.y > clip.y + clip.height + MAX_SAMPLE_JUMP)
+    ) {
       previous = null;
       continue;
     }
@@ -208,7 +239,16 @@ export function updateFunctionPath(shape: Shape): void {
     previous = point;
   }
   if (!Number.isFinite(left)) {
-    throw new Error("该范围内没有可绘制的实数函数值");
+    if (clip === undefined && !hasOpenDomain(formula)) {
+      throw new Error("该范围内没有可绘制的实数函数值");
+    }
+    shape.path = "";
+    const anchor = toCanvasPoint({ x: range.start, y: 0 });
+    shape.x = anchor.x;
+    shape.y = anchor.y;
+    shape.width = 1;
+    shape.height = 1;
+    return;
   }
   shape.path = path.trim();
   shape.x = left;
@@ -231,7 +271,11 @@ export function createFunctionShape(formula: FunctionDefinition): Shape {
 
 /** 来源点变化后重新拟合，坐标转换与直接输入的拟合点保持一致 */
 export function updateFittedFunction(shape: Shape, sources: Shape[]): void {
-  if (shape.formula === undefined) {
+  if (
+    shape.formula === undefined ||
+    typeof shape.formula.minimum !== "number" ||
+    typeof shape.formula.maximum !== "number"
+  ) {
     return;
   }
   const points: Point[] = [];

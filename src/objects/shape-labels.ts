@@ -1,5 +1,5 @@
 import { createFabricLabel } from "../canvas/fabric-shapes";
-import { createShape, MAX_SHAPES } from "../core/model";
+import { createShape, MAX_NAME_LENGTH, MAX_SHAPES } from "../core/model";
 import type { BoardDocument, Shape } from "../core/types";
 
 /** 将图形上的标签转换为独立文字，保留标签当前的外观和位置 */
@@ -19,7 +19,7 @@ export function detachLabel(document: BoardDocument, owner: Shape): Shape | null
   label.width = object.width;
   label.height = object.height;
   label.rotation = owner.rotation;
-  label.name = owner.text;
+  label.name = owner.text.slice(0, MAX_NAME_LENGTH);
   label.text = owner.text;
   label.fontFamily = owner.fontFamily;
   label.fontSize = owner.fontSize;

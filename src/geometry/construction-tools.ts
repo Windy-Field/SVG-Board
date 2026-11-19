@@ -46,17 +46,28 @@ export function acceptsConstructionSource(
   return selected[0].kind !== candidate.kind;
 }
 
-/** 检查现有选区是否满足构造条件，供先选对象的操作方式使用 */
+/** 检查选区能否构造，文字等无关对象不参与批量配对 */
 export function validConstructionSources(kind: ConstructionTool, selected: Shape[]): boolean {
-  if (selected.length !== constructionSourceCount(kind)) {
-    return false;
-  }
-  const accepted: Shape[] = [];
+  let points = 0;
+  let lines = 0;
   for (const shape of selected) {
-    if (!acceptsConstructionSource(kind, accepted, shape)) {
-      return false;
+    if (shape.kind === "point") {
+      points = points + 1;
+    } else if (shape.kind === "line") {
+      lines = lines + 1;
     }
-    accepted.push(shape);
   }
-  return true;
+  if (kind === "segment") {
+    return points === 2;
+  }
+  if (kind === "bisector") {
+    return lines === 2;
+  }
+  if (kind === "midpoint") {
+    return lines > 0;
+  }
+  if (kind === "intersection") {
+    return lines >= 2;
+  }
+  return lines > 0 && points > 0;
 }

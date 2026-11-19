@@ -5,6 +5,8 @@ import { updateFittedFunction } from "../math/plots";
 
 // 小于此长度时按退化几何处理，单位为画布坐标
 const MIN_LENGTH = 0.000001;
+// 交点去重沿用几何计算精度，单位为画布坐标
+export const SAME_POINT_DISTANCE = MIN_LENGTH;
 // 新建平行线和垂线的显示长度
 const CONSTRUCTION_LENGTH = 240;
 // 构造线可显示的最短长度，单位为画布坐标
@@ -131,6 +133,32 @@ export function getLinePoints(shape: Shape): Point[] {
   ];
 }
 
+/** 求两条线所在直线的唯一交点，退化、平行或重合时返回空值 */
+export function findLineIntersection(first: Shape, second: Shape): Point | null {
+  if (Math.hypot(first.width, first.height) < MIN_LENGTH) {
+    return null;
+  }
+  if (Math.hypot(second.width, second.height) < MIN_LENGTH) {
+    return null;
+  }
+  const firstEnds = getLinePoints(first);
+  const secondEnds = getLinePoints(second);
+  const firstLine = new Flatten.Line(
+    new Flatten.Point(firstEnds[0].x, firstEnds[0].y),
+    new Flatten.Point(firstEnds[1].x, firstEnds[1].y)
+  );
+  const secondLine = new Flatten.Line(
+    new Flatten.Point(secondEnds[0].x, secondEnds[0].y),
+    new Flatten.Point(secondEnds[1].x, secondEnds[1].y)
+  );
+  const intersections = firstLine.intersect(secondLine);
+  if (intersections.length !== 1) {
+    return null;
+  }
+  const intersection = intersections[0];
+  return { x: intersection.x, y: intersection.y };
+}
+
 /** 写入线的起点与方向，构造对象统一使用不旋转的画布坐标 */
 function setLine(shape: Shape, start: Point, end: Point): void {
   shape.x = start.x;
@@ -168,7 +196,7 @@ function setConstructionLine(shape: Shape, start: Point, end: Point): void {
 }
 
 /** 更新一个构造对象，来源缺失或退化时返回 false，不保留错误的可见结果 */
-function updateRelation(document: BoardDocument, shape: Shape): boolean {
+export function updateRelation(document: BoardDocument, shape: Shape): boolean {
   const relation = shape.relation;
   if (relation.kind === "fit") {
     const sources: Shape[] = [];
@@ -231,28 +259,17 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
     return false;
   }
   if (relation.kind === "intersection" || relation.kind === "bisector") {
-    const other = getLinePoints(second);
-    if (Math.hypot(other[1].x - other[0].x, other[1].y - other[0].y) < MIN_LENGTH) {
-      return false;
-    }
-    const firstLine = new Flatten.Line(
-      new Flatten.Point(endpoints[0].x, endpoints[0].y),
-      new Flatten.Point(endpoints[1].x, endpoints[1].y)
-    );
-    const secondLine = new Flatten.Line(
-      new Flatten.Point(other[0].x, other[0].y),
-      new Flatten.Point(other[1].x, other[1].y)
-    );
-    const intersections = firstLine.intersect(secondLine);
-    if (intersections.length !== 1) {
+    const origin = findLineIntersection(first, second);
+    if (origin === null) {
       return false;
     }
     if (relation.kind === "intersection") {
-      shape.x = intersections[0].x;
-      shape.y = intersections[0].y;
+      shape.x = origin.x;
+      shape.y = origin.y;
       return true;
     }
     // 两条单位方向向量相加得到一条角平分线，反向时改取另一方向
+    const other = getLinePoints(second);
     const otherLength = Math.hypot(other[1].x - other[0].x, other[1].y - other[0].y);
     let bisectorX = directionX / length + (other[1].x - other[0].x) / otherLength;
     let bisectorY = directionY / length + (other[1].y - other[0].y) / otherLength;
@@ -262,7 +279,6 @@ function updateRelation(document: BoardDocument, shape: Shape): boolean {
       bisectorY = directionY / length - (other[1].y - other[0].y) / otherLength;
       bisectorLength = Math.hypot(bisectorX, bisectorY);
     }
-    const origin = intersections[0];
     setConstructionLine(shape, origin, {
       x: origin.x + (bisectorX / bisectorLength) * CONSTRUCTION_LENGTH,
       y: origin.y + (bisectorY / bisectorLength) * CONSTRUCTION_LENGTH

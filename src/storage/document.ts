@@ -6,8 +6,10 @@ import {
   MAX_BOARD_SIZE
 } from "../core/model";
 import type { BoardDocument, FunctionDefinition, Relation, Shape, ShapeKind } from "../core/types";
-import { MAX_COORDINATE_POINTS, MAX_MATH_COORDINATE } from "../math/coordinates";
+import { MAX_COORDINATE_POINTS } from "../math/coordinates";
 import { MAX_FIT_DEGREE, updateFunctionPath } from "../math/plots";
+import { readDomainMaximum, readDomainMinimum } from "../math/domain";
+import { SVG_NAMESPACE } from "./svg-image";
 import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
 import { isFont } from "../ui/fonts";
 import { isRecord } from "../core/validation";
@@ -82,7 +84,9 @@ function readKind(value: unknown): ShapeKind {
     value === "arrow" ||
     value === "polygon" ||
     value === "curve" ||
-    value === "function"
+    value === "function" ||
+    value === "path" ||
+    value === "svg-image"
   ) {
     return value;
   }
@@ -132,7 +136,7 @@ function readShape(value: unknown): Shape {
     sources.push(readString(source, MAX_IDENTIFIER_LENGTH));
   }
   const path = readString(value.path, MAX_PATH_LENGTH);
-  if (!/^[MLQCHVZmlqchvz0-9eE.,\s+\-]*$/.test(path)) {
+  if (!/^[MLQCHVZASTmlqchvzast0-9eE.,\s+\-]*$/.test(path)) {
     throw new Error("画笔路径包含不支持的指令");
   }
   const fontFamily = readString(value.fontFamily, MAX_IDENTIFIER_LENGTH);
@@ -231,6 +235,21 @@ function readShape(value: unknown): Shape {
     shape.formula = readFormula(value.formula);
     updateFunctionPath(shape);
   }
+  if (shape.kind === "svg-image") {
+    const image = value.svgImage;
+    if (!isRecord(image)) {
+      throw new Error("缺少 SVG 图像");
+    }
+    const source = readString(image.source, MAX_FILE_BYTES);
+    if (!source.startsWith("<") || !source.includes(SVG_NAMESPACE)) {
+      throw new Error("SVG 图像格式无效");
+    }
+    shape.svgImage = {
+      source: source,
+      width: readNumber(image.width, 1, MAX_BOARD_SIZE),
+      height: readNumber(image.height, 1, MAX_BOARD_SIZE)
+    };
+  }
   return shape;
 }
 
@@ -267,8 +286,8 @@ function readFormula(value: unknown): FunctionDefinition {
   }
   return {
     expression: readString(value.expression, MAX_EXPRESSION_LENGTH),
-    minimum: readNumber(value.minimum, -MAX_MATH_COORDINATE, MAX_MATH_COORDINATE),
-    maximum: readNumber(value.maximum, -MAX_MATH_COORDINATE, MAX_MATH_COORDINATE),
+    minimum: readDomainMinimum(value.minimum, degree === 0),
+    maximum: readDomainMaximum(value.maximum, degree === 0),
     degree: degree,
     coefficients: coefficients
   };

@@ -8,10 +8,18 @@ import {
   setConstructionLength,
   updateRelations
 } from "../src/geometry/geometry";
-import { createDocument, createShape, History, MAX_NAME_LENGTH } from "../src/core/model";
+import {
+  createDocument,
+  createShape,
+  History,
+  MAX_NAME_LENGTH,
+  MAX_SHAPES
+} from "../src/core/model";
+import { constructSelection } from "../src/core/construction-batch";
 import { createFlowTemplate, createGeometryTemplate } from "../src/objects/templates";
 import { isRecord } from "../src/core/validation";
 import { createFunctionShape } from "../src/math/plots";
+import type { ConstructionTool } from "../src/core/types";
 
 /** 验证两个模板都符合保存格式，重新打开后不丢失对象和关系 */
 function testRoundTrip(): void {
@@ -22,6 +30,88 @@ function testRoundTrip(): void {
   }
 }
 test("模板文件可完整往返", testRoundTrip);
+
+/** 共点的多对直线只生成一个交点，已有点也不重复添加 */
+function testBatchIntersections(): void {
+  const board = createDocument();
+  const horizontal = createShape("line", { x: 0, y: 100 });
+  horizontal.width = 200;
+  const vertical = createShape("line", { x: 100, y: 0 });
+  vertical.height = 200;
+  const diagonal = createShape("line", { x: 0, y: 0 });
+  diagonal.width = 200;
+  diagonal.height = 200;
+  const parallel = createShape("line", { x: 0, y: 120 });
+  parallel.width = 200;
+  const existing = createShape("point", { x: 100, y: 120 });
+  const lines = [horizontal, vertical, diagonal, parallel];
+  board.shapes.push(horizontal, vertical, diagonal, parallel, existing);
+  const result = constructSelection(board, lines, "intersection");
+  assert.equal(result.created.length, 2);
+  assert.equal(result.duplicates, 3);
+  assert.equal(result.invalid, 1);
+  assert.deepEqual(result.created[0].relation.sources, [horizontal.id, vertical.id]);
+  assert.deepEqual(result.created[1].relation.sources, [diagonal.id, parallel.id]);
+  const count = board.shapes.length;
+  assert.equal(constructSelection(board, lines, "intersection").created.length, 0);
+  assert.equal(board.shapes.length, count);
+  assert.equal(parseDocument(JSON.stringify(board)).shapes.length, count);
+}
+test("批量求交跳过已有点、共点和无效配对", testBatchIntersections);
+
+/** 每个选中点和每条选中线配对，并保持来源关系与统一的撤销记录 */
+function testBatchLines(): void {
+  const board = createDocument();
+  const first = createShape("point", { x: 40, y: 40 });
+  const second = createShape("point", { x: 80, y: 60 });
+  const horizontal = createShape("line", { x: 0, y: 0 });
+  horizontal.width = 100;
+  const vertical = createShape("line", { x: 0, y: 0 });
+  vertical.height = 100;
+  board.shapes.push(first, second, horizontal, vertical);
+  const selected = board.shapes.slice();
+  const history = new History();
+  history.reset(board);
+  const methods: ConstructionTool[] = ["parallel", "perpendicular"];
+  for (const kind of methods) {
+    const result = constructSelection(board, selected, kind);
+    assert.equal(result.created.length, 4);
+    assert.deepEqual(result.created[3].relation.sources, [vertical.id, second.id]);
+    history.push(board);
+  }
+  first.y = 60;
+  updateRelations(board);
+  assert.equal(board.shapes[4].y, 60);
+  const undo = history.undo();
+  if (undo === null) {
+    throw new Error("缺少可撤销的构造记录");
+  }
+  assert.equal(parseDocument(undo).shapes.length, 8);
+  const result = constructSelection(board, selected, "midpoint");
+  assert.equal(result.created.length, 2);
+}
+test("批量平行线、垂线和中点保留来源", testBatchLines);
+
+/** 一批结果放不下时不留下部分对象或标签 */
+function testBatchCapacity(): void {
+  const board = createDocument();
+  const first = createShape("line", { x: 0, y: 0 });
+  const second = createShape("line", { x: 0, y: 20 });
+  first.width = 100;
+  second.width = 100;
+  board.shapes.push(first, second);
+  while (board.shapes.length < MAX_SHAPES - 3) {
+    board.shapes.push(createShape("rect", { x: 0, y: 0 }));
+  }
+  const before = board.shapes.slice();
+  /** 尝试提交需要四个空位的两个中点和点名 */
+  function createTooMany(): void {
+    constructSelection(board, [first, second], "midpoint");
+  }
+  assert.throws(createTooMany, /对象上限/);
+  assert.deepEqual(board.shapes, before);
+}
+test("超过容量时不提交部分批量构造", testBatchCapacity);
 
 /** 旧作品默认使用白色画布，新作品的画布颜色可完整保存 */
 function testBackground(): void {

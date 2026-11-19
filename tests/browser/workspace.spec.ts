@@ -1,6 +1,6 @@
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { createDocument, createShape, GRID_SIZE } from "../../src/core/model";
+import { createDocument, createShape, GRID_SIZE, MAX_NAME_LENGTH } from "../../src/core/model";
 import { parseDocument } from "../../src/storage/document";
 import { createFlowTemplate } from "../../src/objects/templates";
 import type { BoardDocument, Point } from "../../src/core/types";
@@ -944,7 +944,7 @@ async function checkConstructionMethods(page: Page): Promise<void> {
   const first = createShape("point", { x: 220, y: 180 });
   const second = createShape("point", { x: 700, y: 180 });
   const horizontal = createShape("line", { x: 200, y: 350 });
-  horizontal.width = 500;
+  horizontal.width = 480;
   const vertical = createShape("line", { x: 450, y: 230 });
   vertical.height = 300;
   document.shapes.push(first, second, horizontal, vertical);
@@ -1229,6 +1229,315 @@ async function testConstructionLocks(): Promise<void> {
   await runBrowser(checkConstructionLocks);
 }
 
+/** 模拟存档写入失败，确认作品留在画板上且重试不会清空撤销记录 */
+async function checkSaveFailure(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  /** 拦截存档写入，直到测试允许恢复 */
+  function blockArchiveWrites(): void {
+    const write = Storage.prototype.setItem;
+    /** 只阻止作品列表写入，保留其他浏览器存储行为 */
+    function writeWithQuota(this: Storage, key: string, value: string): void {
+      if (key === "svg-board-archives-v1" && sessionStorage.getItem("allow-save") === null) {
+        throw new DOMException("模拟存储空间不足", "QuotaExceededError");
+      }
+      write.call(this, key, value);
+    }
+    Storage.prototype.setItem = writeWithQuota;
+  }
+  await page.evaluate(blockArchiveWrites);
+  const title = page.getByRole("textbox", { name: "作品名称" });
+  await title.fill("尚未保存的作品");
+  await title.press("Tab");
+  await expect(page.locator("#save-status")).toHaveText("保存失败");
+  expect(await page.evaluate(leavingIsBlocked)).toBe(true);
+  await selectArchive(page, "课程作业 · 提交流程");
+  await expect(title).toHaveValue("尚未保存的作品");
+  await expect(page.locator("#message")).toContainText("请导出项目备份");
+  await page.getByRole("button", { name: "新建画板", exact: true }).click();
+  await expect(title).toHaveValue("尚未保存的作品");
+  /** 恢复正常存储，验证用户可直接重试 */
+  function allowSave(): void {
+    sessionStorage.setItem("allow-save", "true");
+  }
+  await page.evaluate(allowSave);
+  await page.keyboard.press("Control+s");
+  await expect(page.locator("#message")).toHaveText("已保存到此浏览器");
+  expect(await page.evaluate(leavingIsBlocked)).toBe(false);
+  await selectArchive(page, "尚未保存的作品");
+  const undo = page.getByRole("button", { name: "撤销", exact: true });
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect(page.locator("#message")).toHaveText("已撤销上一步");
+}
+
+/** 检查离开事件是否被拦截，不需要真的关闭页面 */
+function leavingIsBlocked(): boolean {
+  const event = new Event("beforeunload", { cancelable: true });
+  return !window.dispatchEvent(event);
+}
+
+/** 修改名称但不失焦，重载页面时仍应弹出浏览器确认 */
+async function checkLeaveWarning(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  const title = page.getByRole("textbox", { name: "作品名称" });
+  await title.click();
+  await title.fill("尚未提交的名称");
+  expect(await page.evaluate(leavingIsBlocked)).toBe(true);
+  const warning = page.waitForEvent("dialog");
+  /** 由页面发起重载，避免自动化关闭标签时跳过提示 */
+  function requestReload(): void {
+    /** 等当前脚本返回后再触发浏览器确认 */
+    function reload(): void {
+      window.location.reload();
+    }
+    window.setTimeout(reload, 0);
+  }
+  await page.evaluate(requestReload);
+  const dialog = await warning;
+  expect(dialog.type()).toBe("beforeunload");
+  await dialog.dismiss();
+  await expect(title).toHaveValue("尚未提交的名称");
+  await title.press("Tab");
+  await saved(page);
+  expect(await page.evaluate(leavingIsBlocked)).toBe(false);
+}
+
+/** 多选点与线后应用批量命令，结果能够一次撤销 */
+async function checkBatchConstruction(page: Page): Promise<void> {
+  const board = createDocument();
+  const first = createShape("point", { x: 210, y: 180 });
+  const second = createShape("point", { x: 530, y: 240 });
+  const horizontal = createShape("line", { x: 200, y: 350 });
+  horizontal.width = 460;
+  const vertical = createShape("line", { x: 450, y: 230 });
+  vertical.height = 300;
+  board.shapes.push(first, second, horizontal, vertical);
+  await openBoard(page, board);
+  await page.locator("#objects-tab").click();
+  for (const line of [horizontal, vertical]) {
+    const row = page.locator('[data-object-select="' + line.id + '"]');
+    await row.click({ modifiers: ["Control"] });
+  }
+  const intersect = page.getByRole("button", { name: "交点", exact: true });
+  await intersect.click();
+  expect((await saved(page)).shapes.length).toBe(6);
+  await page.locator('[data-object-select="' + horizontal.id + '"]').click();
+  await page
+    .locator('[data-object-select="' + vertical.id + '"]')
+    .click({ modifiers: ["Control"] });
+  await intersect.click();
+  await expect(page.locator("#message")).toContainText("跳过 1 个已有或重合的交点");
+  for (const point of [first, second]) {
+    const row = page.locator('[data-object-select="' + point.id + '"]');
+    await row.click({ modifiers: ["Control"] });
+  }
+  await page.getByRole("button", { name: "垂线", exact: true }).click();
+  await expect(page.locator("#message")).toHaveText("已创建 4 个构造对象");
+  expect((await saved(page)).shapes.length).toBe(10);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  expect((await saved(page)).shapes.length).toBe(6);
+}
+
+/** 用浏览器验证原生退出提示和取消后的保存 */
+async function testLeaveWarning(): Promise<void> {
+  await runBrowser(checkLeaveWarning);
+}
+
+/** 用实际选区验证批量构造和撤销 */
+async function testBatchConstruction(): Promise<void> {
+  await runBrowser(checkBatchConstruction);
+}
+
+/** 验证取消不拆标签，确认保存后独立文字可以重新打开 */
+async function checkTextCancel(page: Page): Promise<void> {
+  const document = createDocument();
+  const rectangle = createShape("rect", { x: 200, y: 200 });
+  rectangle.width = 400;
+  rectangle.height = 180;
+  rectangle.text = "说明".repeat(MAX_NAME_LENGTH);
+  document.shapes.push(rectangle);
+  await openBoard(page, document);
+  await page.locator("#objects-tab").click();
+  await page.locator('[data-object-select="' + rectangle.id + '"]').click();
+  await page.locator("#properties-tab").click();
+  const edit = page.getByRole("button", { name: "编辑", exact: true });
+  await edit.click();
+  await page.locator("#text-value").fill("不保存的修改");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#text-dialog")).not.toBeVisible();
+  await page.keyboard.press("Control+s");
+  const unchanged = await saved(page);
+  expect(unchanged.shapes).toHaveLength(1);
+  expect(unchanged.shapes[0].text).toBe(rectangle.text);
+  await edit.click();
+  await expect(page.locator("#text-value")).toHaveValue(rectangle.text);
+  await page.getByRole("button", { name: "保存文字", exact: true }).click();
+  const updated = await saved(page);
+  expect(updated.shapes).toHaveLength(2);
+  expect(updated.shapes[1].name).toHaveLength(MAX_NAME_LENGTH);
+  expect(updated.shapes[1].text).toBe(rectangle.text);
+}
+
+/** 在窄屏上验证 PNG 忙碌、失败和重试状态 */
+async function checkExportFeedback(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openBoard(page, createDocument());
+  /** 暂存第一次编码的回调，便于检查处理中状态 */
+  function delayFirstPng(): void {
+    const encode = HTMLCanvasElement.prototype.toBlob;
+    /** 第一次编码失败，后续使用浏览器原有实现 */
+    function waitForFailure(this: HTMLCanvasElement, callback: BlobCallback): void {
+      /** 收到测试信号后完成失败的编码 */
+      function finishFailure(): void {
+        HTMLCanvasElement.prototype.toBlob = encode;
+        callback(null);
+      }
+      window.addEventListener("test-png-failure", finishFailure, { once: true });
+    }
+    HTMLCanvasElement.prototype.toBlob = waitForFailure;
+  }
+  await page.evaluate(delayFirstPng);
+  await page.getByRole("button", { name: "导出", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "导出作品" });
+  const png = dialog.getByRole("button", { name: "导出 PNG" });
+  const status = dialog.getByRole("status");
+  await png.click();
+  await expect(status).toHaveText("正在生成 PNG");
+  await expect(png).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  /** 通知模拟编码器返回失败 */
+  function finishPng(): void {
+    window.dispatchEvent(new Event("test-png-failure"));
+  }
+  await page.evaluate(finishPng);
+  await expect(status).toContainText("PNG 编码失败");
+  await expect(png).toBeEnabled();
+  const download = page.waitForEvent("download");
+  await png.click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/\.png$/);
+  await expect(status).toHaveText("已发起 PNG 下载");
+  await dialog.getByRole("button", { name: "关闭导出" }).click();
+  await expect(page.locator("#export-preview img")).toHaveCount(0);
+}
+
+/** 使用浏览器验证保存失败后保留作品 */
+async function testSaveFailure(): Promise<void> {
+  await runBrowser(checkSaveFailure);
+}
+
+/** 使用浏览器验证文字取消和长标签保存 */
+async function testTextCancel(): Promise<void> {
+  await runBrowser(checkTextCancel);
+}
+
+/** 使用浏览器验证导出状态和失败重试 */
+async function testExportFeedback(): Promise<void> {
+  await runBrowser(checkExportFeedback);
+}
+
+/** 在尺寸变化当帧检查画布像素，避免等重绘完成后才发现闪白 */
+async function readSidebarResize(): Promise<number> {
+  /** 侧栏改变尺寸后，在浏览器绘制前采样背景像素 */
+  function sampleAfterResize(resolve: (alpha: number) => void): void {
+    const host = document.querySelector("#canvas-host");
+    const canvas = document.querySelector(".lower-canvas");
+    const toggle = document.querySelector("#inspector-button");
+    if (
+      host === null ||
+      !(canvas instanceof HTMLCanvasElement) ||
+      !(toggle instanceof HTMLButtonElement)
+    ) {
+      throw new Error("工作区未加载");
+    }
+    const context = canvas.getContext("2d");
+    if (context === null) {
+      throw new Error("画布无法读取");
+    }
+    const paint = context;
+    const observer = new ResizeObserver(sample);
+    observer.observe(host);
+    toggle.click();
+
+    /** 读取画布中心像素的透明度，并结束观察 */
+    function sample(): void {
+      observer.disconnect();
+      const surface = paint.canvas;
+      const pixel = paint.getImageData(surface.width / 2, surface.height / 2, 1, 1);
+      resolve(pixel.data[3]);
+    }
+  }
+  return new Promise<number>(sampleAfterResize);
+}
+
+/** 验证侧栏开合不清空画面，切换长短内容时三个标题都保持原位 */
+async function checkSidebarStability(page: Page): Promise<void> {
+  const board = createDocument();
+  board.description = "# 说明\n\n" + "这是一段用于测试滚动的说明\n\n".repeat(55);
+  await openBoard(page, board);
+  expect(await page.evaluate(readSidebarResize)).toBe(255);
+  await expect(page.locator("#inspector")).toBeHidden();
+  expect(await page.evaluate(readSidebarResize)).toBe(255);
+  await expect(page.locator("#inspector")).toBeVisible();
+  await page.addStyleTag({ content: ".inspector::-webkit-scrollbar { width: 16px; }" });
+  const tabs = page.locator(".inspector-tabs button");
+  /** 只比较水平方向，选中样式不应改变任何标题列的位置或宽度 */
+  function readTabPositions(buttons: HTMLElement[]): number[] {
+    const positions: number[] = [];
+    for (const button of buttons) {
+      const bounds = button.getBoundingClientRect();
+      positions.push(bounds.x, bounds.width);
+    }
+    return positions;
+  }
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width: width, height: 900 });
+    await page.locator("#objects-tab").click();
+    const shortPanel = await tabs.evaluateAll(readTabPositions);
+    await page.locator("#description-tab").click();
+    const longPanel = await tabs.evaluateAll(readTabPositions);
+    expect(longPanel).toEqual(shortPanel);
+  }
+}
+
+/** 使用浏览器复现侧栏开合和标题切换 */
+async function testSidebarStability(): Promise<void> {
+  await runBrowser(checkSidebarStability);
+}
+
+/** 验证连续操作替换提示并重新计时，淡出时仍保留文字 */
+async function checkToastMotion(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  await page.clock.install();
+  const message = page.locator("#message");
+  await page.keyboard.press("Control+c");
+  await expect(message).toHaveText("请先选择要复制的对象");
+  await page.clock.runFor(1500);
+  await page.keyboard.press("Control+v");
+  await expect(message).toHaveText("暂无可粘贴的对象");
+  await page.clock.runFor(1800);
+  await expect(message).not.toHaveClass(/message-hidden/);
+  await page.clock.runFor(250);
+  await expect(message).toHaveClass(/message-hidden/);
+  await expect(message).toHaveText("暂无可粘贴的对象");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(message).toHaveCSS("translate", "0px");
+}
+
+/** 使用真实浏览器检查提示计时和减少动态效果 */
+async function testToastMotion(): Promise<void> {
+  await runBrowser(checkToastMotion);
+}
+
+test("提示停留两秒，新提示重新计时并支持减少动态效果", testToastMotion);
+test("侧栏开合不闪白且切换标题不移位", testSidebarStability);
+test("保存失败保留当前画板与撤销记录", testSaveFailure);
+test("未保存重载时显示浏览器确认，保存后不再拦截", testLeaveWarning);
+test("多选求交去重并一次撤销批量垂线", testBatchConstruction);
+test("取消文字编辑不拆标签且长标签可保存", testTextCancel);
+test("PNG 导出显示进度并可在失败后重试", testExportFeedback);
 test("工具图标对齐与纵向文本编辑", testToolbar);
 test("参考线可拖动且箭头端点吸附网格", testLines);
 test("Ctrl 多选取消与右键框选", testSelection);

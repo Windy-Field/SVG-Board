@@ -18,6 +18,8 @@ import {
 } from "../math/plots";
 import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
 import { addPointLabel, nextPointName } from "../objects/point-labels";
+import { readDomainMaximum, readDomainMinimum } from "../math/domain";
+import { notify } from "./feedback";
 
 // 函数输入框首次显示的解析式
 const DEFAULT_EXPRESSION = "sin(x)";
@@ -126,6 +128,23 @@ export function openMathDialog(mode: string): void {
     }
   }
   const count = document.getElementById("math-source-count");
+  const minimum = input("math-minimum");
+  const maximum = input("math-maximum");
+  if (mode === "function") {
+    minimum.type = "text";
+    maximum.type = "text";
+    minimum.placeholder = "如 -inf";
+    maximum.placeholder = "如 inf";
+  } else {
+    minimum.type = "number";
+    maximum.type = "number";
+    if (minimum.value === "") {
+      minimum.value = String(DEFAULT_DOMAIN_MINIMUM);
+    }
+    if (maximum.value === "") {
+      maximum.value = String(DEFAULT_DOMAIN_MAXIMUM);
+    }
+  }
   if (count !== null) {
     count.textContent = "已选择 " + selectedSources.length + " 个点";
   }
@@ -198,18 +217,10 @@ function createMathShapes(text: string): Shape[] {
     }
     return additions;
   }
-  const minimum = Number(input("math-minimum").value);
-  const maximum = Number(input("math-maximum").value);
-  if (
-    !Number.isFinite(minimum) ||
-    !Number.isFinite(maximum) ||
-    minimum >= maximum ||
-    Math.abs(minimum) > MAX_MATH_COORDINATE ||
-    Math.abs(maximum) > MAX_MATH_COORDINATE
-  ) {
-    throw new Error("函数范围须递增且位于 " + -MAX_MATH_COORDINATE + " 到 " + MAX_MATH_COORDINATE);
-  }
-  if (currentMode === "fit") {
+  const allowInfinite = currentMode === "function";
+  const minimum = readDomainMinimum(input("math-minimum").value, allowInfinite);
+  const maximum = readDomainMaximum(input("math-maximum").value, allowInfinite);
+  if (currentMode === "fit" && typeof minimum === "number" && typeof maximum === "number") {
     return createFitShapes(text, minimum, maximum);
   }
   const shape = createFunctionShape({
@@ -260,6 +271,13 @@ function handleSubmit(event: SubmitEvent): void {
     canvas.render();
     changed();
     closeDialog();
+    if (currentMode === "coordinate-point") {
+      notify("已创建 " + additions.length + " 个坐标点");
+    } else if (currentMode === "fit") {
+      notify("已生成拟合曲线");
+    } else {
+      notify("已绘制函数曲线");
+    }
   } catch (error) {
     const element = document.getElementById("math-error");
     if (element !== null && error instanceof Error) {

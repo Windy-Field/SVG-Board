@@ -113,7 +113,7 @@ export function outlinePoints(shape: Shape): Point[] {
     }
     return points;
   }
-  if (shape.kind === "curve" || shape.kind === "pencil") {
+  if (shape.kind === "curve" || shape.kind === "pencil" || shape.kind === "path") {
     return pathPoints(shape);
   }
   if (isLine(shape)) {

@@ -57,6 +57,7 @@ import { AlignLeft, AlignCenter, AlignRight, ChevronDown } from "lucide";
 import { setupArchivePicker } from "./archive-picker";
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, MAX_DESCRIPTION_LENGTH } from "../core/model";
 import { Axis3d, ChartSpline, ChartScatter } from "lucide";
+import { History, Play, Pause, SkipBack, SkipForward } from "lucide";
 
 // 日期时间刷新间隔，单位为毫秒
 const CLOCK_INTERVAL = 1000;
@@ -146,6 +147,15 @@ export function getElement(id: string): HTMLElement {
   return element;
 }
 
+/** 按编号取得对话框，验证元素类型后再调用模态接口 */
+export function getDialog(id: string): HTMLDialogElement {
+  const dialog = getElement(id);
+  if (!(dialog instanceof HTMLDialogElement)) {
+    throw new Error("对话框类型不正确：" + id);
+  }
+  return dialog;
+}
+
 /** 获取输入控件，通过真实类型检查替代强制类型断言 */
 export function getInput(id: string): HTMLInputElement {
   const element = getElement(id);
@@ -206,7 +216,12 @@ export function refreshIcons(): void {
       ChevronDown: ChevronDown,
       Axis3d: Axis3d,
       ChartSpline: ChartSpline,
-      ChartScatter: ChartScatter
+      ChartScatter: ChartScatter,
+      History: History,
+      Play: Play,
+      Pause: Pause,
+      SkipBack: SkipBack,
+      SkipForward: SkipForward
     }
   });
 }
@@ -335,16 +350,17 @@ export function mountInterface(): void {
         <div class="object-status"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div>
       </div>
       <span id="board-size" class="board-size">${BOARD_WIDTH} × ${BOARD_HEIGHT}</span>
-      <div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div>
+      <div class="zoom-controls">${commandButton("replay", "编辑回放", "history")}${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div>
     </footer>
-    <div id="message" class="message" role="status" hidden></div>
+    <div id="message" class="message message-hidden" role="status"></div>
     <input id="file-input" type="file" accept=".json,.svg" hidden />
-    <dialog id="text-dialog"><form id="text-form"><div class="dialog-heading"><h2>编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="${MAX_TEXT_LENGTH}"></textarea><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>
-    <dialog id="delete-dialog"><div class="dialog-heading"><h2>删除存档</h2>${commandButton("cancel-delete", "取消删除", "x")}</div><p id="delete-archive-name"></p><p>此操作无法撤销</p><div class="dialog-actions"><button type="button" data-action="cancel-delete">取消</button><button type="button" class="danger-button" data-action="confirm-delete">删除存档</button></div></dialog>
+    <dialog id="text-dialog" aria-labelledby="text-title"><form id="text-form"><div class="dialog-heading"><h2 id="text-title">编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="${MAX_TEXT_LENGTH}" autofocus></textarea><p id="text-error" class="dialog-feedback" data-state="error" role="status"></p><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>
+    <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-archive-name"><div class="dialog-heading"><h2 id="delete-title">删除存档</h2>${commandButton("cancel-delete", "取消删除", "x")}</div><p id="delete-archive-name"></p><p>此操作无法撤销</p><p id="delete-error" class="dialog-feedback" data-state="error" role="status"></p><div class="dialog-actions"><button type="button" data-action="cancel-delete" autofocus>取消</button><button type="button" class="danger-button" data-action="confirm-delete">删除存档</button></div></dialog>
     <div id="tool-menu" class="tool-menu" popover="manual" role="group" aria-label="工具模式"></div>
     <div id="archive-options" class="archive-options" popover="auto" role="listbox" aria-label="画图存档选项"></div>
     <dialog id="polygon-dialog"><form id="polygon-form"><div class="dialog-heading"><h2>正多边形</h2>${commandButton("close-polygon", "关闭多边形设置", "x")}</div><label for="polygon-sides">边数</label><input id="polygon-sides" type="number" min="${MIN_POLYGON_SIDES}" max="${MAX_REGULAR_SIDES}" step="1" value="${DEFAULT_POLYGON_SIDES}" /><div class="dialog-actions"><button type="submit" class="primary-button">开始绘制</button></div></form></dialog>
-    <dialog id="export-dialog"><div class="dialog-heading"><h2>导出作品</h2>${commandButton("close-export", "关闭导出", "x")}</div><div id="export-preview" class="export-preview"></div><p id="export-error" role="status"></p><div class="dialog-actions"><button type="button" data-action="export-project">导出项目</button><button type="button" data-action="export-svg">导出 SVG</button><button type="button" class="primary-button" data-action="export-png">导出 PNG</button></div></dialog>
+    <dialog id="export-dialog" aria-labelledby="export-title"><div class="dialog-heading"><h2 id="export-title">导出作品</h2>${commandButton("close-export", "关闭导出", "x")}</div><div id="export-preview" class="export-preview"></div><p id="export-status" class="dialog-feedback" role="status"></p><div class="dialog-actions"><button type="button" data-action="export-project">导出项目</button><button type="button" data-action="export-svg">导出 SVG</button><button type="button" class="primary-button" data-action="export-png">导出 PNG</button></div></dialog>
+    <dialog id="replay-dialog" aria-labelledby="replay-title"><div class="dialog-heading"><h2 id="replay-title">编辑回放</h2>${commandButton("replay-close", "关闭回放", "x")}</div><div id="replay-preview" class="export-preview"><img id="replay-image" alt="编辑步骤预览" /></div><div class="replay-controls"><div class="replay-buttons">${commandButton("replay-previous", "上一步", "skip-back")}${commandButton("replay-play", "播放回放", "play")}${commandButton("replay-pause", "暂停回放", "pause")}${commandButton("replay-next", "下一步", "skip-forward")}</div><input id="replay-position" type="range" min="0" step="1" aria-label="回放进度" /><output id="replay-step" for="replay-position"></output></div><p id="replay-error" class="dialog-feedback" data-state="error" role="status"></p></dialog>
   `;
   refreshIcons();
   createTextToolbar(getElement("canvas-host"));

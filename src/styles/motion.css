@@ -1,103 +1,115 @@
-/* 高频指针操作即时响应，面板和菜单只使用轻微过渡 */
-.workspace {
-  transition: grid-template-columns 220ms var(--ease-out);
+/* 控件只过渡颜色，不移动文字或点击范围 */
+button,
+select {
+  transition:
+    background-color var(--motion-control) ease,
+    border-color var(--motion-control) ease,
+    color var(--motion-control) ease;
 }
 .inspector {
   transition:
-    opacity 180ms var(--ease-out),
-    transform 220ms var(--ease-out),
-    visibility 220ms;
+    opacity var(--motion-panel) var(--ease-out),
+    translate var(--motion-panel) var(--ease-out),
+    visibility var(--motion-panel);
 }
-button {
-  transition:
-    background-color 120ms var(--ease-out),
-    transform 120ms var(--ease-out);
-}
-button:active:not(:disabled) {
-  transform: translateY(1px);
+.workspace.inspector-hidden .inspector {
+  translate: var(--panel-offset, 12px) 0;
 }
 .tool-menu {
   min-width: 0;
-  opacity: 1;
-  transform: scale(1);
-  transform-origin: left top;
+  --menu-offset: -4px 0;
+}
+.archive-options,
+.font-menu {
+  --menu-offset: 0 -4px;
+}
+.tool-menu,
+.archive-options,
+.font-menu {
   transition:
-    opacity 160ms var(--ease-out),
-    transform 160ms var(--ease-out),
-    display 160ms allow-discrete,
-    overlay 160ms allow-discrete;
+    opacity var(--motion-menu) var(--ease-out),
+    translate var(--motion-menu) var(--ease-out),
+    display var(--motion-menu) allow-discrete,
+    overlay var(--motion-menu) allow-discrete;
 }
-@starting-style {
-  .tool-menu:popover-open {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-}
-.tool-menu:not(:popover-open) {
+.tool-menu:not(:popover-open),
+.archive-options:not(:popover-open),
+.font-menu:not(:popover-open) {
   opacity: 0;
-  transform: scale(0.97);
+  translate: var(--menu-offset);
+  pointer-events: none;
 }
 dialog {
   transition:
-    opacity 180ms var(--ease-out),
-    transform 180ms var(--ease-out),
-    display 180ms allow-discrete,
-    overlay 180ms allow-discrete;
+    opacity var(--motion-panel) var(--ease-out),
+    translate var(--motion-panel) var(--ease-out),
+    display var(--motion-panel) allow-discrete,
+    overlay var(--motion-panel) allow-discrete;
 }
 dialog:not([open]) {
   opacity: 0;
-  transform: scale(0.98);
+  translate: 0 var(--dialog-offset, 6px);
+  pointer-events: none;
 }
-@starting-style {
-  dialog[open] {
-    opacity: 0;
-    transform: scale(0.98);
-  }
+dialog::backdrop {
+  transition:
+    opacity var(--motion-panel) var(--ease-out),
+    display var(--motion-panel) allow-discrete,
+    overlay var(--motion-panel) allow-discrete;
+}
+dialog:not([open])::backdrop {
+  opacity: 0;
+  pointer-events: none;
 }
 .message {
-  opacity: 1;
   transition:
-    opacity 180ms var(--ease-out),
-    transform 180ms var(--ease-out);
+    opacity var(--motion-panel) var(--ease-out),
+    translate var(--motion-panel) var(--ease-out),
+    visibility var(--motion-panel);
 }
 .message-hidden {
+  visibility: hidden;
   opacity: 0;
-  transform: translate(-50%, 8px);
-  pointer-events: none;
+  translate: 0 var(--message-offset, 8px);
+  transition-duration: var(--motion-menu);
 }
 .text-toolbar {
   transition:
-    opacity 150ms var(--ease-out),
-    display 150ms allow-discrete;
+    opacity var(--motion-menu) var(--ease-out),
+    display var(--motion-menu) allow-discrete;
 }
 .text-toolbar[hidden] {
   opacity: 0;
+  pointer-events: none;
 }
 @starting-style {
-  .text-toolbar:not([hidden]),
-  .message:not(.message-hidden) {
+  .tool-menu:popover-open,
+  .archive-options:popover-open,
+  .font-menu:popover-open {
+    opacity: 0;
+    translate: var(--menu-offset);
+  }
+  dialog[open] {
+    opacity: 0;
+    translate: 0 var(--dialog-offset, 6px);
+  }
+  dialog[open]::backdrop,
+  .text-toolbar:not([hidden]) {
     opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .workspace {
-    transition: none;
+  :root {
+    --motion-control: 0ms;
+    --motion-menu: var(--motion-reduced);
+    --motion-panel: var(--motion-reduced);
+    --dialog-offset: 0px;
+    --message-offset: 0px;
+    --panel-offset: 0px;
   }
-  .inspector,
   .tool-menu,
-  dialog,
-  .message,
-  button {
-    transition-duration: 80ms;
-    transform: none;
-  }
-  .message,
-  .message-hidden {
-    transform: translateX(-50%);
-  }
-  .workspace.inspector-hidden .inspector,
-  .tool-menu:not(:popover-open),
-  dialog:not([open]) {
-    transform: none;
+  .archive-options,
+  .font-menu {
+    --menu-offset: 0 0;
   }
 }

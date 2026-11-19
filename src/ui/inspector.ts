@@ -25,6 +25,11 @@ import {
 import { toMathPoint, toCanvasPoint, MAX_MATH_COORDINATE } from "../math/coordinates";
 import { updateFunctionPath } from "../math/plots";
 import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
+import { readDomainMaximum, readDomainMinimum } from "../math/domain";
+
+// 滑块每次移动的透明度比例和线宽单位
+const OPACITY_STEP = 0.01;
+const STROKE_WIDTH_STEP = 0.1;
 
 /** 校验属性控件并更新作品，返回是否需要提交修改 */
 export function applyProperty(
@@ -80,7 +85,13 @@ export function applyProperty(
   if (control instanceof HTMLInputElement && control.type === "checkbox") {
     return applyCheckbox(shape, property, control.checked);
   }
-  if (control instanceof HTMLInputElement && control.type === "number") {
+  if (property === "domainMinimum" || property === "domainMaximum") {
+    return applyDomainBound(shape, property, control.value);
+  }
+  if (
+    control instanceof HTMLInputElement &&
+    (control.type === "number" || control.type === "range")
+  ) {
     return applyNumber(shape, property, value);
   }
   if (property === "expression" && shape.formula !== undefined) {
@@ -110,6 +121,23 @@ export function applyProperty(
   return true;
 }
 
+/** 更新一个定义域端点，计算成功后才写回原图形 */
+function applyDomainBound(shape: Shape, property: string, value: string): boolean {
+  const copy = structuredClone(shape);
+  if (copy.formula === undefined) {
+    return false;
+  }
+  const allowInfinite = copy.formula.degree === 0;
+  if (property === "domainMinimum") {
+    copy.formula.minimum = readDomainMinimum(value, allowInfinite);
+  } else {
+    copy.formula.maximum = readDomainMaximum(value, allowInfinite);
+  }
+  updateFunctionPath(copy);
+  Object.assign(shape, copy);
+  return true;
+}
+
 /** 更新数值属性，变形字段必须先检查锁定状态和构造约束 */
 function applyNumber(shape: Shape, property: string, value: number): boolean {
   if (!Number.isFinite(value)) {
@@ -117,26 +145,6 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
   }
   if (property === "displayLength") {
     return setConstructionLength(shape, value);
-  }
-  if (
-    (property === "domainMinimum" || property === "domainMaximum") &&
-    shape.formula !== undefined
-  ) {
-    if (Math.abs(value) > MAX_MATH_COORDINATE) {
-      return false;
-    }
-    const copy = structuredClone(shape);
-    if (copy.formula === undefined) {
-      return false;
-    }
-    if (property === "domainMinimum") {
-      copy.formula.minimum = value;
-    } else {
-      copy.formula.maximum = value;
-    }
-    updateFunctionPath(copy);
-    Object.assign(shape, copy);
-    return true;
   }
   if ((property === "coordinateX" || property === "coordinateY") && !shape.locked) {
     if (Math.abs(value) > MAX_MATH_COORDINATE) {
@@ -190,6 +198,73 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
     return false;
   }
   return true;
+}
+
+/** 生成有刻度和当前数值的滑块，松手后由属性入口提交 */
+function rangeField(
+  label: string,
+  property: string,
+  value: number,
+  maximum: number,
+  step: number
+): string {
+  const displayed = Math.round(value * 100) / 100;
+  return (
+    '<label class="property-field range-field"><span>' +
+    label +
+    '</span><input type="range" data-property="' +
+    property +
+    '" aria-label="' +
+    label +
+    '" min="0" max="' +
+    maximum +
+    '" step="' +
+    step +
+    '" value="' +
+    displayed +
+    '" /><output>' +
+    displayed +
+    "</output></label>"
+  );
+}
+
+/** 随滑块更新数字，不在拖动中反复重建属性面板 */
+export function updateRangeValue(event: Event): void {
+  const input = event.target;
+  if (
+    !(input instanceof HTMLInputElement) ||
+    input.type !== "range" ||
+    input.dataset.property === undefined
+  ) {
+    return;
+  }
+  const output = input.nextElementSibling;
+  if (output instanceof HTMLOutputElement) {
+    output.value = input.value;
+  }
+}
+
+/** 普通函数使用文本端点以接受 inf，拟合继续使用数值输入 */
+function domainField(
+  label: string,
+  property: string,
+  value: number | string,
+  fitted: boolean
+): string {
+  if (fitted && typeof value === "number") {
+    return numberField(label, property, value, -MAX_MATH_COORDINATE, MAX_MATH_COORDINATE, false);
+  }
+  return (
+    '<label class="property-field"><span>' +
+    label +
+    '</span><input type="text" data-property="' +
+    property +
+    '" aria-label="' +
+    label +
+    '" value="' +
+    escapeHtml(String(value)) +
+    '" /></label>'
+  );
 }
 
 /** 更新二元状态，无填充使用模型中的 none 表示 */
@@ -311,7 +386,7 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
       '<section class="property-section"><h2>已选择 ' +
       selected.length +
       " 个对象</h2>" +
-      numberField("透明度", "opacity", selected[0].opacity, 0, 1, false) +
+      rangeField("透明度", "opacity", selected[0].opacity, 1, OPACITY_STEP) +
       '<div class="multi-actions"><button type="button" data-action="group">组合</button><button type="button" data-action="ungroup">取消组合</button><button type="button" data-action="align-left">左对齐</button><button type="button" data-action="align-top">顶对齐</button><button type="button" data-action="distribute">水平等距</button><button type="button" data-action="same-width">统一宽度</button></div></section>';
     return;
   }
@@ -382,7 +457,13 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
         false
       );
   }
-  markup = markup + numberField("透明度", "opacity", shape.opacity, 0, 1, false);
+  markup = markup + rangeField("透明度", "opacity", shape.opacity, 1, OPACITY_STEP);
+  if (shape.kind === "svg-image") {
+    panel.innerHTML =
+      markup + "</div>" + checkboxField("辅助对象", "auxiliary", shape.auxiliary) + "</section>";
+    refreshIcons();
+    return;
+  }
   markup = markup + '</div></section><section class="property-section"><h2>外观</h2>';
   markup = markup + colorField("描边 / 文字", "stroke", shape.stroke);
   if (shape.kind === "rect") {
@@ -414,7 +495,7 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
   markup =
     markup +
     '<div class="property-grid">' +
-    numberField("线宽", "strokeWidth", shape.strokeWidth, 0, MAX_STROKE_WIDTH, false) +
+    rangeField("线宽", "strokeWidth", shape.strokeWidth, MAX_STROKE_WIDTH, STROKE_WIDTH_STEP) +
     numberField("字号", "fontSize", shape.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, false) +
     "</div>";
   markup =
@@ -431,28 +512,21 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
       '" value="' +
       escapeHtml(shape.formula.expression) +
       '" /></label><div class="property-grid">' +
-      numberField(
-        "起始 x",
-        "domainMinimum",
-        shape.formula.minimum,
-        -MAX_MATH_COORDINATE,
-        MAX_MATH_COORDINATE,
-        false
-      ) +
-      numberField(
-        "结束 x",
-        "domainMaximum",
-        shape.formula.maximum,
-        -MAX_MATH_COORDINATE,
-        MAX_MATH_COORDINATE,
-        false
-      ) +
+      domainField("起始 x", "domainMinimum", shape.formula.minimum, shape.formula.degree > 0) +
+      domainField("结束 x", "domainMaximum", shape.formula.maximum, shape.formula.degree > 0) +
       "</div></section>";
   }
   if (shape.kind !== "text") {
+    let editButton =
+      '<button type="button" class="text-button" data-action="edit-text">编辑</button>';
+    if (shape.kind === "function") {
+      editButton = "";
+    }
     markup =
       markup +
-      '<section class="property-section"><div class="section-title"><h2>文字</h2><button type="button" class="text-button" data-action="edit-text">编辑</button></div><label class="property-field"><span>字体</span><select data-property="fontFamily" aria-label="字体">' +
+      '<section class="property-section"><div class="section-title"><h2>文字</h2>' +
+      editButton +
+      '</div><label class="property-field"><span>字体</span><select data-property="fontFamily" aria-label="字体">' +
       fontOptions() +
       '</select></label><label class="property-field"><span>对齐</span><select data-property="textAlign" aria-label="文字对齐"><option value="start">左对齐</option><option value="middle">居中</option><option value="end">右对齐</option></select></label></section>';
   }

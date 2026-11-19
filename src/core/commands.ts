@@ -164,6 +164,18 @@ export function constructShape(
   if (document.shapes.length >= MAX_SHAPES) {
     throw new Error("对象数量已达上限");
   }
+  const shape = prepareConstruction(document, selected, kind);
+  document.shapes.push(shape);
+  updateRelations(document);
+  return shape;
+}
+
+/** 创建尚未加入作品的构造对象，统一设置名称、样式和来源顺序 */
+export function prepareConstruction(
+  document: BoardDocument,
+  selected: Shape[],
+  kind: ConstructionTool
+): Shape {
   const points: Shape[] = [];
   const lines: Shape[] = [];
   for (const shape of selected) {
@@ -178,7 +190,8 @@ export function constructShape(
   let shape = createShape("line", { x: 0, y: 0 });
   if (kind === "segment" && points.length === 2 && selected.length === 2) {
     sources.push(points[0].id, points[1].id);
-    shape.name = points[0].name + points[1].name;
+    const name = points[0].name + points[1].name;
+    shape.name = name.slice(0, MAX_NAME_LENGTH);
   } else if (kind === "midpoint" && lines.length === 1 && selected.length === 1) {
     shape = createShape("point", { x: 0, y: 0 });
     sources.push(lines[0].id);
@@ -224,7 +237,5 @@ export function constructShape(
     shape.lineType = "straight";
   }
   shape.layer = document.shapes.length;
-  document.shapes.push(shape);
-  updateRelations(document);
   return shape;
 }
