@@ -7,10 +7,11 @@ import "../styles/archive-picker.css";
 import "../styles/math-tools.css";
 import { BoardCanvas } from "../canvas/canvas";
 import { arrangeShapes, changeLayers, deleteShapes, pasteShapes } from "../core/commands";
-import { constructSelection } from "../core/construction-batch";
+import { constructSelection, expandConstructionSelection } from "../core/construction-batch";
 import { parseDocument, STORAGE_KEY } from "../storage/document";
 import { openProject } from "../storage/files";
 import { updateRelations } from "../geometry/geometry";
+import { slideAttachedPoint } from "../geometry/point-attachment";
 import { applyProperty, renderProperties, updateRangeValue } from "../ui/inspector";
 import { renderObjects } from "../ui/object-manager";
 import {
@@ -722,11 +723,30 @@ function executeObjectAction(action: string): void {
 /** 多选时批量构造，选区不足时仍可先开工具再点选来源 */
 function constructFromSelection(action: string, selected: Shape[]): void {
   const kind = getRelationKind(action);
-  if (!validConstructionSources(kind, selected)) {
-    board.setTool(kind);
+  const selection = expandConstructionSelection(selected, kind);
+  if (!validConstructionSources(kind, selection.sources, selection.edges.size > 0)) {
+    // 不够构造时保留明确的来源，避免把上一个工具的结果自动带入下一个工具
+    const isPointAndLine = kind === "parallel" || kind === "perpendicular";
+    const canKeepSelection = isPointAndLine || selection.sources.length === 1;
+    if (board.tool !== "select" || !canKeepSelection || selection.sources.length === 0) {
+      board.setTool(kind);
+      return;
+    }
+    board.startConstruction(kind, selection.sources, selection.edges);
+    if (kind === "segment") {
+      notify("再选一个点");
+    } else if (isPointAndLine) {
+      if (selection.sources[0].kind === "point") {
+        notify("再选一条线或直边");
+      } else {
+        notify("再选一个点");
+      }
+    } else {
+      notify("再选一条线或直边");
+    }
     return;
   }
-  const result = constructSelection(board.document, selected, kind);
+  const result = constructSelection(board.document, selection.sources, kind, selection.edges);
   if (result.created.length > 0) {
     board.selectedIds = [];
     for (const shape of result.created) {
@@ -868,22 +888,31 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
     if (event.shiftKey) {
       distance = LARGE_MOVE_DISTANCE;
     }
+    const offset = { x: 0, y: 0 };
+    if (key === "arrowleft") {
+      offset.x = -distance;
+    } else if (key === "arrowright") {
+      offset.x = distance;
+    } else if (key === "arrowup") {
+      offset.y = -distance;
+    } else if (key === "arrowdown") {
+      offset.y = distance;
+    } else {
+      return;
+    }
     for (const shape of board.getSelectedShapes()) {
       if (shape.locked) {
+        continue;
+      }
+      if (shape.relation.kind === "point-on-outline") {
+        const target = { x: shape.x + offset.x, y: shape.y + offset.y };
+        slideAttachedPoint(board.document, shape, target, board.viewBounds());
         continue;
       }
       if (isDependent(shape)) {
         shape.relation = { kind: "none", sources: [] };
       }
-      if (key === "arrowleft") {
-        moveShape(shape, -distance, 0);
-      } else if (key === "arrowright") {
-        moveShape(shape, distance, 0);
-      } else if (key === "arrowup") {
-        moveShape(shape, 0, -distance);
-      } else if (key === "arrowdown") {
-        moveShape(shape, 0, distance);
-      }
+      moveShape(shape, offset.x, offset.y);
     }
     board.render();
     commit();

@@ -13,6 +13,8 @@ import { SVG_NAMESPACE } from "./svg-image";
 import { MAX_EXPRESSION_LENGTH } from "../math/expressions";
 import { isFont } from "../ui/fonts";
 import { isRecord } from "../core/validation";
+import { straightOutlineEdges } from "../geometry/outlines";
+import { canAttachPoint } from "../geometry/point-attachment";
 import {
   MIN_POINT_RADIUS,
   DEFAULT_BEND_RATIO,
@@ -120,6 +122,7 @@ function readShape(value: unknown): Shape {
     relationKind !== "parallel" &&
     relationKind !== "perpendicular" &&
     relationKind !== "label" &&
+    relationKind !== "point-on-outline" &&
     relationKind !== "fit" &&
     relationKind !== "bisector"
   ) {
@@ -148,6 +151,7 @@ function readShape(value: unknown): Shape {
     throw new Error("文字对齐格式不正确");
   }
   const relation: Relation = { kind: relationKind, sources: sources };
+  readSourceEdges(relation, value.relation.sourceEdges);
   const points = [];
   if (value.points !== undefined) {
     if (!Array.isArray(value.points) || value.points.length > MAX_POLYGON_POINTS) {
@@ -166,6 +170,13 @@ function readShape(value: unknown): Shape {
   if (relationKind === "label") {
     relation.offsetX = readNumber(value.relation.offsetX, -MAX_COORDINATE, MAX_COORDINATE);
     relation.offsetY = readNumber(value.relation.offsetY, -MAX_COORDINATE, MAX_COORDINATE);
+  }
+  if (relationKind === "point-on-outline") {
+    relation.outlinePosition = readNumber(
+      value.relation.outlinePosition,
+      -MAX_COORDINATE,
+      MAX_COORDINATE
+    );
   }
   if (
     relationKind === "segment" ||
@@ -325,6 +336,35 @@ function readTextDirection(value: unknown): "horizontal" | "vertical" {
   throw new Error("文字方向无效");
 }
 
+/** 读取可选的来源边编号，旧项目没有该字段时继续按普通对象处理 */
+function readSourceEdges(relation: Relation, value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value) || value.length !== relation.sources.length) {
+    throw new Error("构造来源边格式不正确");
+  }
+  const kind = relation.kind;
+  const usesTwoLines = kind === "intersection" || kind === "bisector";
+  const usesOneLine = kind === "midpoint" || kind === "parallel" || kind === "perpendicular";
+  const edges: (number | null)[] = [];
+  for (const edge of value) {
+    if (edge === null) {
+      edges.push(null);
+      continue;
+    }
+    if (!usesTwoLines && !(usesOneLine && edges.length === 0)) {
+      throw new Error("该构造来源不能使用直边");
+    }
+    const index = readNumber(edge, 0, MAX_POLYGON_POINTS - 1);
+    if (!Number.isInteger(index)) {
+      throw new Error("构造来源边编号必须为整数");
+    }
+    edges.push(index);
+  }
+  relation.sourceEdges = edges;
+}
+
 /** 验证构造依赖的数量、来源类型和顺序，禁止循环或悬空引用 */
 function validateRelations(shapes: Shape[]): void {
   const seen = new Map<string, Shape>();
@@ -337,7 +377,11 @@ function validateRelations(shapes: Shape[]): void {
     if (relation.kind === "none") {
       required = 0;
     }
-    if (relation.kind === "midpoint" || relation.kind === "label") {
+    if (
+      relation.kind === "midpoint" ||
+      relation.kind === "label" ||
+      relation.kind === "point-on-outline"
+    ) {
       required = 1;
     }
     if (relation.kind === "fit") {
@@ -377,12 +421,14 @@ function validateRelations(shapes: Shape[]): void {
       if (relation.kind === "label" && (first.kind !== "point" || shape.kind !== "text")) {
         throw new Error("顶点文字需要关联一个点");
       }
+      if (relation.kind === "point-on-outline") {
+        validateAttachedPoint(shape, first);
+      }
+      const firstIsLine = isConstructionLineSource(relation, first, 0);
+      const secondIsLine = isConstructionLineSource(relation, second, 1);
       if (
         relation.kind === "bisector" &&
-        (first.kind !== "line" ||
-          second === undefined ||
-          second.kind !== "line" ||
-          shape.kind !== "line")
+        (!firstIsLine || !secondIsLine || shape.kind !== "line")
       ) {
         throw new Error("角平分线需要两条相交直线");
       }
@@ -391,28 +437,22 @@ function validateRelations(shapes: Shape[]): void {
         (first.kind !== "point" ||
           second === undefined ||
           second.kind !== "point" ||
-          shape.kind !== "line")
+          (shape.kind !== "line" && shape.kind !== "arrow"))
       ) {
         throw new Error("两点构造的来源必须是点");
       }
-      if (relation.kind === "midpoint" && (first.kind !== "line" || shape.kind !== "point")) {
+      if (relation.kind === "midpoint" && (!firstIsLine || shape.kind !== "point")) {
         throw new Error("中点必须依附在线段上");
       }
       if (
         relation.kind === "intersection" &&
-        (first.kind !== "line" ||
-          second === undefined ||
-          second.kind !== "line" ||
-          shape.kind !== "point")
+        (!firstIsLine || !secondIsLine || shape.kind !== "point")
       ) {
         throw new Error("交点的来源必须是两条直线");
       }
       if (
         (relation.kind === "parallel" || relation.kind === "perpendicular") &&
-        (first.kind !== "line" ||
-          second === undefined ||
-          second.kind !== "point" ||
-          shape.kind !== "line")
+        (!firstIsLine || second === undefined || second.kind !== "point" || shape.kind !== "line")
       ) {
         throw new Error("平行线或垂线需要一条线和一个点");
       }
@@ -428,6 +468,44 @@ function validateRelations(shapes: Shape[]): void {
     }
     seen.set(shape.id, shape);
   }
+}
+
+/** 验证依附对象和位置参数，封闭边框与有限线段的位置不能越过端点 */
+function validateAttachedPoint(point: Shape, source: Shape): void {
+  const parameter = point.relation.outlinePosition;
+  if (point.kind !== "point" || parameter === undefined || !canAttachPoint(source)) {
+    throw new Error("点的依附对象无效");
+  }
+  if (source.kind === "function" || (source.kind === "line" && source.lineType === "straight")) {
+    return;
+  }
+  const isRay = source.kind === "line" && source.lineType === "ray";
+  if (parameter < 0 || (parameter > 1 && !isRay)) {
+    throw new Error("点在轮廓上的位置无效");
+  }
+}
+
+/** 验证边编号确实指向该图形的直边，点来源和普通直线不需要边编号 */
+function isConstructionLineSource(
+  relation: Relation,
+  shape: Shape | undefined,
+  index: number
+): boolean {
+  if (shape === undefined) {
+    return false;
+  }
+  if (relation.sourceEdges === undefined) {
+    return shape.kind === "line";
+  }
+  const edge = relation.sourceEdges[index];
+  if (edge === undefined || edge === null) {
+    return shape.kind === "line";
+  }
+  const edges = straightOutlineEdges(shape);
+  if (edges[edge] === undefined) {
+    throw new Error("构造来源不是有效直边");
+  }
+  return true;
 }
 
 /** 返回对象是否能作为流程图连接节点 */

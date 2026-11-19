@@ -2,13 +2,15 @@ import { prepareConstruction } from "./commands";
 import { MAX_COORDINATE, MAX_SHAPES } from "./model";
 import type { BoardDocument, ConstructionTool, Point, Shape } from "./types";
 import {
-  findLineIntersection,
+  findConstructionIntersection,
+  lineFromOutlineEdge,
   SAME_POINT_DISTANCE,
   updateRelation,
   updateRelations
 } from "../geometry/geometry";
 import { addPointLabel } from "../objects/point-labels";
 import { validConstructionSources } from "../geometry/construction-tools";
+import { straightOutlineEdges } from "../geometry/outlines";
 
 // 每次命令最多检查的来源组合数，避免大选区卡住画布
 const MAX_CONSTRUCTION_PAIRS = 20000;
@@ -20,13 +22,54 @@ export interface ConstructionResult {
   invalid: number;
 }
 
+/** 保存展开后的点和线，以及每条临时线在原图形上的边号 */
+interface ExpandedSelection {
+  sources: Shape[];
+  edges: Map<Shape, number>;
+}
+
+/** 先选整个图形时，把它的直边交给原有的构造逻辑，不往作品里添加临时线 */
+export function expandConstructionSelection(
+  selected: Shape[],
+  kind: ConstructionTool
+): ExpandedSelection {
+  const result: ExpandedSelection = { sources: [], edges: new Map() };
+  const usesPoint = kind === "segment" || kind === "parallel" || kind === "perpendicular";
+  for (const shape of selected) {
+    if (shape.hidden) {
+      continue;
+    }
+    if (shape.kind === "point") {
+      if (usesPoint) {
+        result.sources.push(shape);
+      }
+    } else if (kind !== "segment") {
+      if (shape.kind === "line") {
+        result.sources.push(shape);
+        continue;
+      }
+      const edges = straightOutlineEdges(shape);
+      for (let index = 0; index < edges.length; index = index + 1) {
+        const line = lineFromOutlineEdge(shape, edges[index]);
+        if (Math.hypot(line.width, line.height) >= SAME_POINT_DISTANCE) {
+          result.sources.push(line);
+          result.edges.set(line, index);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /** 按选区生成构造，通过容量检查后再把整批结果加入作品 */
 export function constructSelection(
   document: BoardDocument,
   selected: Shape[],
-  kind: ConstructionTool
+  kind: ConstructionTool,
+  sourceEdges?: ReadonlyMap<Shape, number>
 ): ConstructionResult {
-  if (!validConstructionSources(kind, selected)) {
+  const includesEdges = sourceEdges !== undefined && sourceEdges.size > 0;
+  if (!validConstructionSources(kind, selected, includesEdges)) {
     throw new Error("请选择该构造需要的点或线");
   }
   const invalidSources = updateRelations(document);
@@ -43,13 +86,15 @@ export function constructSelection(
       lines.push(shape);
     }
   }
-  if (kind === "intersection") {
+  if (kind === "intersection" || kind === "bisector") {
     const pairs = (lines.length * (lines.length - 1)) / 2;
     checkPairLimit(pairs);
     // 已有的有效点也参与去重，包括用户手动画出的点
-    for (const shape of document.shapes) {
-      if (shape.kind === "point" && !invalidSources.has(shape.id)) {
-        positions.push(shape);
+    if (kind === "intersection") {
+      for (const shape of document.shapes) {
+        if (shape.kind === "point" && !invalidSources.has(shape.id)) {
+          positions.push(shape);
+        }
       }
     }
     for (let first = 0; first < lines.length; first = first + 1) {
@@ -70,8 +115,6 @@ export function constructSelection(
     }
   } else if (kind === "segment") {
     addConstruction(points);
-  } else {
-    addConstruction(lines);
   }
   if (result.created.length > 0) {
     document.shapes = staged.shapes;
@@ -88,7 +131,9 @@ export function constructSelection(
     }
     let intersection: Point | null = null;
     if (kind === "intersection") {
-      intersection = findLineIntersection(sources[0], sources[1]);
+      const firstEdge = sourceEdges !== undefined && sourceEdges.has(sources[0]);
+      const secondEdge = sourceEdges !== undefined && sourceEdges.has(sources[1]);
+      intersection = findConstructionIntersection(sources[0], sources[1], firstEdge, secondEdge);
       if (intersection === null || !canStorePosition(intersection)) {
         result.invalid = result.invalid + 1;
         return;
@@ -98,7 +143,7 @@ export function constructSelection(
         return;
       }
     }
-    const shape = prepareConstruction(staged, sources, kind);
+    const shape = prepareConstruction(staged, sources, kind, sourceEdges);
     if (intersection !== null) {
       shape.x = intersection.x;
       shape.y = intersection.y;

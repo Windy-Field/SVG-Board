@@ -13,6 +13,20 @@ interface TargetInfo {
 
 /** 保留用户当前选中的重叠对象，文字首次命中时优先于线条 */
 export class EditorCanvas extends Canvas {
+  /** 判断画笔是否还在绘制，避免空格平移打断笔画 */
+  hasBrushStroke(): boolean {
+    return this._isCurrentlyDrawing;
+  }
+
+  /** 停止当前笔画并清掉临时墨迹，不调用会生成正式路径的松手逻辑 */
+  cancelBrushStroke(): void {
+    if (!this.hasBrushStroke()) {
+      return;
+    }
+    this._isCurrentlyDrawing = false;
+    this.clearContext(this.contextTop);
+  }
+
   /** 只有存在对象变换时才通知库结束，空白区平移没有变换目标 */
   override endCurrentTransform(event?: TPointerEvent): void {
     if (this._currentTransform !== null) {

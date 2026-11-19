@@ -1,4 +1,4 @@
-import { ActiveSelection, Canvas, Path, PencilBrush, Point, Textbox, Polygon } from "fabric";
+import { ActiveSelection, Path, PencilBrush, Point, Textbox } from "fabric";
 import type { FabricObject, TPointerEvent, TPointerEventInfo } from "fabric";
 import { isNode } from "../storage/document";
 import { compareLayers } from "../core/model";
@@ -18,7 +18,10 @@ import type { ConstructionResult } from "../core/construction-batch";
 import { strokeInMarquee } from "../geometry/marquee";
 import { detachLabel } from "../objects/shape-labels";
 import { regularPoints, fitPolygon } from "../objects/shapes";
-import { isConstructionLine, updateRelations } from "../geometry/geometry";
+import { isConstructionLine, lineFromOutlineEdge, updateRelations } from "../geometry/geometry";
+import { nearestOutlineEdge, straightOutlineEdges } from "../geometry/outlines";
+import { attachNewPoint, slideAttachedPoint } from "../geometry/point-attachment";
+import type { OutlineEdge } from "../geometry/outlines";
 import { hasOpenDomain } from "../math/domain";
 import { drawAxes } from "./axes";
 import {
@@ -30,13 +33,16 @@ import {
   isDependent,
   isLine,
   MAX_PATH_LENGTH,
+  MAX_POLYGON_POINTS,
   MAX_SHAPES,
+  MIN_POLYGON_SIDES,
   moveShape,
   resizeShape
 } from "../core/model";
 import {
   DEFAULT_STROKE,
   DEFAULT_FILL,
+  DEFAULT_POINT_RADIUS,
   DEFAULT_POLYGON_SIDES,
   MIN_FONT_SIZE,
   MAX_FONT_SIZE
@@ -73,6 +79,8 @@ const GRID_RADIUS = 1.05;
 const CLICK_DISTANCE = 4;
 // 几何点命中的容差，单位为屏幕像素
 const POINT_HIT_DISTANCE = 12;
+// 几何工具选择直边时允许的指针偏差，单位为屏幕像素
+const EDGE_HIT_DISTANCE = 8;
 // 右键框选边缘的容差，单位为屏幕像素
 const MARQUEE_TOLERANCE = 3;
 // 低于此亮度时使用浅色网格，取值范围为 0 至 255
@@ -93,8 +101,8 @@ const MIN_DRAWING_LENGTH = 4;
 const MIN_SHAPE_SIZE = 8;
 // 草稿相对正式对象的显示透明度，取值为 0 到 1
 const PREVIEW_OPACITY = 0.75;
-// 多边形草稿的浅色填充
-const POLYGON_PREVIEW_FILL = "#2563eb11";
+// 点击起点闭合多边形的范围，单位为屏幕像素
+const POLYGON_CLOSE_DISTANCE = 10;
 
 /** 画布通过回调报告作品、选择和视口变化 */
 export interface CanvasCallbacks {
@@ -124,6 +132,14 @@ interface DrawingGesture {
   view: BoardPoint;
   shape: Shape | null;
   selection: string[];
+  startPointId?: string;
+}
+
+/** 保存构造选中的对象，形状直边用临时线段参与计算并保留原对象编号 */
+interface ConstructionPick {
+  shape: Shape;
+  edgeIndex: number | undefined;
+  edge: OutlineEdge | undefined;
 }
 
 /** 适配 Fabric 编辑能力与作品模型，仅额外处理关系更新和绘制工具 */
@@ -139,7 +155,7 @@ export class BoardCanvas {
   stroke = DEFAULT_STROKE;
   fill = DEFAULT_FILL;
   private host: HTMLElement;
-  private fabric: Canvas;
+  private fabric: EditorCanvas;
   private callbacks: CanvasCallbacks;
   private objects = new Map<string, FabricObject>();
   private ids = new Map<FabricObject, string>();
@@ -158,13 +174,13 @@ export class BoardCanvas {
   private selectionClick: { id: string; x: number; y: number; ids: string[] } | null = null;
   polygonSides = DEFAULT_POLYGON_SIDES;
   private customVertices: BoardPoint[] = [];
-  private polygonPreview: Polygon | null = null;
+  private polygonPress: BoardPoint | null = null;
   private overlapSelection = new OverlapSelection();
   private overlapClick: { x: number; y: number; ids: string[] } | null = null;
   private waitingForClick = false;
   private finishingClick = false;
   private segmentStart = "";
-  private constructionIds: string[] = [];
+  private constructionPicks: ConstructionPick[] = [];
   private holdTimer = 0;
   private holdPosition: { x: number; y: number; pointerId: number } | null = null;
   private holdPanning = false;
@@ -219,7 +235,7 @@ export class BoardCanvas {
     this.fabric.on("path:created", this.handlePathCreated.bind(this));
     this.fabric.on("object:modifyPath", this.handleTransforming.bind(this));
     this.fabric.on("before:render", this.drawGrid.bind(this));
-    this.fabric.upperCanvasEl.addEventListener("pointerleave", this.clearHover.bind(this));
+    this.fabric.upperCanvasEl.addEventListener("pointerleave", this.handlePointerLeave.bind(this));
     this.fabric.upperCanvasEl.addEventListener(
       "pointercancel",
       this.handlePointerCancel.bind(this)
@@ -311,10 +327,44 @@ export class BoardCanvas {
     this.tool = tool;
     if (isConstructionTool(tool)) {
       this.selectedIds = [];
-      this.constructionIds = [];
     }
     this.render();
     this.callbacks.toolChanged(tool);
+  }
+
+  /** 保留已有构造来源，接下来只需点选缺少的点或边 */
+  startConstruction(
+    kind: ConstructionTool,
+    sources: Shape[],
+    edges: ReadonlyMap<Shape, number>
+  ): void {
+    this.setTool(kind);
+    if (this.readOnly || sources.length === 0) {
+      return;
+    }
+    if (kind === "segment") {
+      this.segmentStart = sources[0].id;
+      this.selectedIds = [this.segmentStart];
+      this.finishSelection();
+      return;
+    }
+    for (const shape of sources) {
+      const edgeIndex = edges.get(shape);
+      let edge: OutlineEdge | undefined;
+      if (edgeIndex === undefined) {
+        this.selectedIds.push(shape.id);
+      } else {
+        const owner = findShape(this.document, shape.id);
+        if (owner === undefined) {
+          continue;
+        }
+        const outline = straightOutlineEdges(owner);
+        edge = outline[edgeIndex];
+      }
+      this.constructionPicks.push({ shape: shape, edgeIndex: edgeIndex, edge: edge });
+    }
+    this.updateConstructionEdges(undefined);
+    this.finishSelection();
   }
 
   /** 进入只读前撤回未完成操作，保留查看和选择能力 */
@@ -612,6 +662,9 @@ export class BoardCanvas {
     if (shape.kind === "function") {
       return;
     }
+    if (shape.relation.kind === "point-on-outline") {
+      return;
+    }
     if (isDependent(shape)) {
       shape.relation = { kind: "none", sources: [] };
     }
@@ -692,10 +745,15 @@ export class BoardCanvas {
 
   /** 拖动时按对象类型吸附，不干扰缩放或旋转 */
   private handleMoving(event: { target: FabricObject }): void {
+    const center = event.target.getCenterPoint();
+    const id = this.ids.get(event.target);
+    const shape = findShape(this.document, id || "");
+    if (shape !== undefined && shape.relation.kind === "point-on-outline") {
+      slideAttachedPoint(this.document, shape, center, this.viewBounds());
+      this.handleTransforming();
+      return;
+    }
     if (this.snap) {
-      const center = event.target.getCenterPoint();
-      const id = this.ids.get(event.target);
-      const shape = findShape(this.document, id || "");
       let position = {
         x: Math.round(center.x / GRID_SIZE) * GRID_SIZE,
         y: Math.round(center.y / GRID_SIZE) * GRID_SIZE
@@ -756,8 +814,10 @@ export class BoardCanvas {
     for (const shape of this.document.shapes) {
       const object = this.objects.get(shape.id);
       if (object !== undefined && isDependent(shape)) {
-        updateFabricGeometry(object, shape, this.viewBounds());
         object.visible = !shape.hidden && !invalid.has(shape.id);
+        if (object.visible) {
+          updateFabricGeometry(object, shape, this.viewBounds());
+        }
       }
       const label = this.labels.get(shape.id);
       if (label !== undefined) {
@@ -867,22 +927,13 @@ export class BoardCanvas {
 
   /** 优先采用附近已有几何点，点击空白处时新建独立端点 */
   private segmentPoint(position: BoardPoint): Shape {
-    let nearest: Shape | undefined;
-    let distance = POINT_HIT_DISTANCE / this.viewport.zoom;
-    for (const shape of this.document.shapes) {
-      if (shape.kind !== "point" || shape.hidden) {
-        continue;
-      }
-      const current = Math.hypot(shape.x - position.x, shape.y - position.y);
-      if (current <= distance) {
-        nearest = shape;
-        distance = current;
-      }
-    }
+    const nearest = this.findNearbyPoint(position);
     if (nearest !== undefined) {
       return nearest;
     }
-    const point = createShape("point", position);
+    const snapped = this.snapPoint(position, "");
+    const point = createShape("point", snapped);
+    this.attachPointAt(point, position);
     point.stroke = this.stroke;
     point.fill = this.fill;
     point.layer = this.document.shapes.length;
@@ -891,6 +942,53 @@ export class BoardCanvas {
     this.document.shapes.push(point);
     addPointLabel(this.document, point);
     return point;
+  }
+
+  /** 只使用实际显示的对象作为来源，避免依附到已经退化的构造 */
+  private attachPointAt(point: Shape, position: BoardPoint): void {
+    const invisible = new Set<string>();
+    for (const shape of this.document.shapes) {
+      const object = this.objects.get(shape.id);
+      if (object === undefined || !object.visible) {
+        invisible.add(shape.id);
+      }
+    }
+    attachNewPoint(
+      this.document,
+      point,
+      position,
+      this.viewport.zoom,
+      this.viewBounds(),
+      invisible
+    );
+  }
+
+  /** 查找点击位置附近已有的可见几何点，不为普通绘图额外创建点 */
+  private findNearbyPoint(position: BoardPoint): Shape | undefined {
+    let nearest: Shape | undefined;
+    let distance = POINT_HIT_DISTANCE / this.viewport.zoom;
+    for (const shape of this.document.shapes) {
+      const object = this.objects.get(shape.id);
+      if (shape.kind !== "point" || shape.hidden || object === undefined || !object.visible) {
+        continue;
+      }
+      const current = Math.hypot(shape.x - position.x, shape.y - position.y);
+      if (current <= distance) {
+        nearest = shape;
+        distance = current;
+      }
+    }
+    return nearest;
+  }
+
+  /** 线条两端都点到已有几何点时，记录点的编号而不改变点本身 */
+  private bindLineToPoints(gesture: DrawingGesture, shape: Shape, end: Shape | undefined): void {
+    const start = gesture.startPointId;
+    if (start === undefined || end === undefined || start === end.id) {
+      return;
+    }
+    shape.relation = { kind: "segment", sources: [start, end.id] };
+    shape.locked = true;
   }
 
   /** 两次点击确定来源点，完成后可继续创建下一条直线 */
@@ -902,6 +1000,7 @@ export class BoardCanvas {
     const point = this.segmentPoint(position);
     const first = findShape(this.document, this.segmentStart);
     if (first === undefined) {
+      // 新直线可以连接构造点，不解除该点原有的来源关系
       this.segmentStart = point.id;
       this.selectedIds = [point.id];
     } else if (first.id !== point.id) {
@@ -919,50 +1018,115 @@ export class BoardCanvas {
     if (!isConstructionTool(this.tool)) {
       return;
     }
+    const candidate = this.findConstructionPick(this.tool, event);
+    if (candidate === undefined) {
+      return;
+    }
+    this.constructionPicks.push(candidate);
+    if (this.constructionPicks.length >= constructionSourceCount(this.tool)) {
+      this.completeConstructionPicks(this.tool);
+      return;
+    }
+    this.selectedIds = [];
+    if (candidate.edge === undefined) {
+      this.selectedIds.push(candidate.shape.id);
+    }
+    this.updateConstructionEdges(undefined);
+    this.finishSelection();
+  }
+
+  /** 按显示顺序查找指针下的来源，封闭图形只在可用的直边附近命中 */
+  private findConstructionPick(
+    kind: ConstructionTool,
+    event: TPointerEvent
+  ): ConstructionPick | undefined {
     const position = this.fabric.getScenePoint(event);
     const selected: Shape[] = [];
-    for (const id of this.constructionIds) {
-      const shape = findShape(this.document, id);
-      if (shape !== undefined) {
-        selected.push(shape);
-      }
+    for (const pick of this.constructionPicks) {
+      selected.push(pick.shape);
     }
     const objects = this.fabric.getObjects();
     objects.reverse();
     for (const object of objects) {
       const id = this.ids.get(object);
       const candidate = findShape(this.document, id || "");
-      if (
-        candidate === undefined ||
-        candidate.hidden ||
-        !acceptsConstructionSource(this.tool, selected, candidate)
-      ) {
+      if (candidate === undefined || !object.visible) {
         continue;
       }
-      if (this.fabric.searchPossibleTargets([object], position).target === undefined) {
+      if (candidate.kind === "point" || candidate.kind === "line") {
+        const match = this.fabric.searchPossibleTargets([object], position);
+        if (match.target !== undefined && acceptsConstructionSource(kind, selected, candidate)) {
+          return { shape: candidate, edgeIndex: undefined, edge: undefined };
+        }
         continue;
       }
-      selected.push(candidate);
-      this.constructionIds.push(candidate.id);
-      this.selectedIds = this.constructionIds.slice();
-      if (selected.length === constructionSourceCount(this.tool)) {
-        this.constructionIds = [];
-        this.finishConstruction(selected, this.tool);
-      } else {
-        this.restoreSelection();
-        this.fabric.requestRenderAll();
-        this.callbacks.selected();
+      if (kind === "segment") {
+        continue;
       }
-      return;
+      const edges = straightOutlineEdges(candidate);
+      const distance = EDGE_HIT_DISTANCE / this.viewport.zoom + candidate.strokeWidth / 2;
+      const edgeIndex = nearestOutlineEdge(edges, position, distance);
+      if (edgeIndex === undefined || this.isPickedEdge(candidate.id, edgeIndex)) {
+        continue;
+      }
+      const edge = edges[edgeIndex];
+      const line = lineFromOutlineEdge(candidate, edge);
+      if (acceptsConstructionSource(kind, selected, line)) {
+        return { shape: line, edgeIndex: edgeIndex, edge: edge };
+      }
     }
+    return undefined;
+  }
+
+  /** 同一图形的不同边可同时选择，但同一条边只选一次 */
+  private isPickedEdge(id: string, index: number): boolean {
+    for (const pick of this.constructionPicks) {
+      if (pick.shape.id === id && pick.edgeIndex === index) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 把已选边与当前指向的边交给画布提示层，不添加额外对象 */
+  private updateConstructionEdges(hover: OutlineEdge | undefined): void {
+    const edges: OutlineEdge[] = [];
+    for (const pick of this.constructionPicks) {
+      if (pick.edge !== undefined) {
+        edges.push(pick.edge);
+      }
+    }
+    this.feedback.setConstructionEdges(edges, hover);
+  }
+
+  /** 收齐来源后只提交一次构造，边号随来源编号一起保存 */
+  private completeConstructionPicks(kind: ConstructionTool): void {
+    const sources: Shape[] = [];
+    const edges = new Map<Shape, number>();
+    for (const pick of this.constructionPicks) {
+      sources.push(pick.shape);
+      if (pick.edgeIndex !== undefined) {
+        edges.set(pick.shape, pick.edgeIndex);
+      }
+    }
+    this.constructionPicks = [];
+    this.updateConstructionEdges(undefined);
+    this.finishConstruction(sources, kind, edges);
   }
 
   /** 完成点选构造，重复交点不写入作品或撤销历史 */
-  private finishConstruction(sources: Shape[], kind: ConstructionTool): void {
+  private finishConstruction(
+    sources: Shape[],
+    kind: ConstructionTool,
+    edges: ReadonlyMap<Shape, number>
+  ): void {
     try {
-      const result = constructSelection(this.document, sources, kind);
+      const result = constructSelection(this.document, sources, kind, edges);
       if (result.created.length > 0) {
-        this.selectedIds = [result.created[0].id];
+        this.selectedIds = [];
+        for (const shape of result.created) {
+          this.selectedIds.push(shape.id);
+        }
         this.render();
         this.callbacks.changed();
       } else {
@@ -988,15 +1152,13 @@ export class BoardCanvas {
     if (this.gesture !== null) {
       if (this.waitingForClick) {
         this.finishingClick = true;
-        this.handlePointerMove(event);
       }
       return;
     }
-    const start = this.getPosition(event.e);
     const screen = this.fabric.getViewportPoint(event.e);
     if (this.tool === "hand" || this.spacePressed) {
       this.gesture = {
-        start: start,
+        start: this.fabric.getScenePoint(event.e),
         screen: screen,
         view: { x: this.viewport.x, y: this.viewport.y },
         shape: null,
@@ -1027,8 +1189,7 @@ export class BoardCanvas {
       return;
     }
     if (this.tool === "custom-polygon") {
-      this.customVertices.push(start);
-      this.previewPolygon();
+      this.polygonPress = screen;
       return;
     }
     let kind = this.tool;
@@ -1043,6 +1204,16 @@ export class BoardCanvas {
     }
     if (kind === "ray" || kind === "straight") {
       kind = "line";
+    }
+    let start = this.getPosition(event.e);
+    let startPointId: string | undefined;
+    if (kind === "line" || kind === "arrow") {
+      const position = this.fabric.getScenePoint(event.e);
+      const point = this.findNearbyPoint(position);
+      if (point !== undefined) {
+        start = { x: point.x, y: point.y };
+        startPointId = point.id;
+      }
     }
     const shape = createShape(kind, start);
     if (this.tool === "ray" || this.tool === "straight") {
@@ -1063,6 +1234,7 @@ export class BoardCanvas {
       }
     }
     if (shape.kind === "point") {
+      this.attachPointAt(shape, this.fabric.getScenePoint(event.e));
       shape.name = nextPointName(this.document);
       shape.text = shape.name;
     }
@@ -1081,7 +1253,8 @@ export class BoardCanvas {
       screen: screen,
       view: { x: 0, y: 0 },
       shape: shape,
-      selection: this.selectedIds.slice()
+      selection: this.selectedIds.slice(),
+      startPointId: startPointId
     };
     this.drawPreview();
   }
@@ -1090,6 +1263,19 @@ export class BoardCanvas {
   private handlePointerMove(event: TPointerEventInfo<TPointerEvent>): void {
     const gesture = this.gesture;
     if (gesture === null) {
+      if (isConstructionTool(this.tool) && this.tool !== "segment" && !this.spacePressed) {
+        const pick = this.findConstructionPick(this.tool, event.e);
+        if (pick === undefined) {
+          this.updateConstructionEdges(undefined);
+        } else {
+          this.updateConstructionEdges(pick.edge);
+        }
+        return;
+      }
+      if (this.tool === "custom-polygon" && this.customVertices.length > 0 && !this.spacePressed) {
+        this.previewPolygon(event.e);
+        return;
+      }
       this.updateHover(event.target);
       return;
     }
@@ -1101,26 +1287,36 @@ export class BoardCanvas {
       this.applyViewport();
       return;
     }
+    this.updateDrawingSize(gesture, shape, event.e);
+    this.drawPreview();
+  }
+
+  /** 更新预览或最终尺寸，并返回指针实际命中的线条终点 */
+  private updateDrawingSize(
+    gesture: DrawingGesture,
+    shape: Shape,
+    event: TPointerEvent
+  ): Shape | undefined {
     if (shape.kind === "point") {
-      const position = this.fabric.getScenePoint(event.e);
-      if (
-        (position.x - gesture.start.x) * (position.x - gesture.start.x) +
-          (position.y - gesture.start.y) * (position.y - gesture.start.y) <
-        CLICK_DISTANCE * CLICK_DISTANCE
-      ) {
-        return;
+      const screen = this.fabric.getViewportPoint(event);
+      const distance = Math.hypot(screen.x - gesture.screen.x, screen.y - gesture.screen.y);
+      // 吸附只决定圆心，鼠标移动量决定半径，轻点保留默认大小
+      shape.pointRadius = DEFAULT_POINT_RADIUS;
+      if (distance >= CLICK_DISTANCE) {
+        const radius = distance / this.viewport.zoom;
+        shape.pointRadius = Math.min(MAX_POINT_RADIUS, Math.max(MIN_POINT_RADIUS, radius));
       }
-      shape.pointRadius = Math.min(
-        MAX_POINT_RADIUS,
-        Math.max(
-          MIN_POINT_RADIUS,
-          Math.hypot(position.x - gesture.start.x, position.y - gesture.start.y)
-        )
-      );
-      this.drawPreview();
-      return;
+      return undefined;
     }
-    const position = this.getPosition(event.e);
+    let position = this.getPosition(event);
+    let endpoint: Shape | undefined;
+    if (gesture.startPointId !== undefined) {
+      const pointer = this.fabric.getScenePoint(event);
+      endpoint = this.findNearbyPoint(pointer);
+      if (endpoint !== undefined && endpoint.id !== gesture.startPointId) {
+        position = endpoint;
+      }
+    }
     shape.width = position.x - gesture.start.x;
     shape.height = position.y - gesture.start.y;
     if (this.tool === "circle") {
@@ -1138,18 +1334,24 @@ export class BoardCanvas {
       }
       shape.fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, textHeight / 1.2));
     }
-    if (
-      (event.e.shiftKey || this.tool === "square" || shape.kind === "polygon") &&
-      !isLine(shape)
-    ) {
+    if ((event.shiftKey || this.tool === "square" || shape.kind === "polygon") && !isLine(shape)) {
       const size = Math.max(Math.abs(shape.width), Math.abs(shape.height));
-      shape.width = Math.sign(shape.width) * size;
-      shape.height = Math.sign(shape.height) * size;
+      // 没有沿某个方向移动时，仍要给这一边保留完整尺寸
+      const growsRight = shape.width >= 0;
+      const growsDown = shape.height >= 0;
+      shape.width = size;
+      shape.height = size;
+      if (!growsRight) {
+        shape.width = -size;
+      }
+      if (!growsDown) {
+        shape.height = -size;
+      }
     }
     if (shape.kind === "polygon") {
       shape.points = regularPoints(shape.width, shape.height, shape.sides);
     }
-    this.drawPreview();
+    return endpoint;
   }
 
   /** 草稿只存在于手势中，预览不进入保存文件，也不重建已有图形 */
@@ -1203,11 +1405,23 @@ export class BoardCanvas {
 
   /** 完成绘制，连接两个节点的折线保留跟随关系 */
   private handlePointerUp(event: TPointerEventInfo<TPointerEvent>): void {
+    if (event.e instanceof MouseEvent && event.e.button !== 0) {
+      return;
+    }
+    if (this.polygonPress !== null) {
+      const press = this.polygonPress;
+      this.polygonPress = null;
+      const pointer = this.fabric.getViewportPoint(event.e);
+      if (Math.hypot(pointer.x - press.x, pointer.y - press.y) < CLICK_DISTANCE) {
+        this.placePolygonVertex(event.e);
+      }
+      return;
+    }
     const construction = this.constructionClick;
     this.constructionClick = null;
     if (construction !== null && construction === this.tool) {
       if (construction === "segment") {
-        this.placeSegmentPoint(this.getPosition(event.e));
+        this.placeSegmentPoint(this.fabric.getScenePoint(event.e));
       } else {
         this.placeConstructionSource(event.e);
       }
@@ -1238,7 +1452,8 @@ export class BoardCanvas {
     }
     this.waitingForClick = false;
     this.finishingClick = false;
-    if (shape !== null && shape.kind === "connector") {
+    const endpoint = this.updateDrawingSize(gesture, shape, event.e);
+    if (shape.kind === "connector") {
       const hit = this.fabric.findTarget(event.e);
       let destination: Shape | undefined;
       if (hit.target !== undefined) {
@@ -1259,12 +1474,12 @@ export class BoardCanvas {
         shape.relation = { kind: "none", sources: [] };
       }
     }
-    if (shape !== null && shape.kind !== "point") {
-      if (Math.hypot(shape.width, shape.height) < MIN_DRAWING_LENGTH && shape.kind !== "pencil") {
+    if (shape.kind !== "point") {
+      if (Math.hypot(shape.width, shape.height) < MIN_DRAWING_LENGTH) {
         this.cancelGesture();
         return;
       }
-      if (!isLine(shape) && shape.kind !== "pencil") {
+      if (!isLine(shape)) {
         const bounds = getBounds(shape);
         shape.x = bounds.x;
         shape.y = bounds.y;
@@ -1293,6 +1508,7 @@ export class BoardCanvas {
       shape.height = object.height;
       object.dispose();
     }
+    this.bindLineToPoints(gesture, shape, endpoint);
     this.document.shapes.push(shape);
     addPointLabel(this.document, shape);
     this.selectedIds = [shape.id];
@@ -1310,62 +1526,82 @@ export class BoardCanvas {
     }
   }
 
-  /** 自定义多边形按点击顺序预览顶点，最后由双击闭合 */
-  private previewPolygon(): void {
-    const previous = this.fabric.getObjects();
-    for (const object of previous) {
-      if (object === this.polygonPreview) {
-        this.fabric.remove(object);
-        object.dispose();
-      }
+  /** 顶点足够时，指针靠近起点或吸附到起点都可以闭合 */
+  private canClosePolygon(event: TPointerEvent, position: BoardPoint): boolean {
+    if (this.customVertices.length < MIN_POLYGON_SIDES) {
+      return false;
     }
-    this.polygonPreview = new Polygon(this.customVertices, {
-      fill: POLYGON_PREVIEW_FILL,
-      stroke: this.stroke,
-      strokeWidth: PENCIL_WIDTH,
-      selectable: false,
-      evented: false
-    });
-    this.fabric.add(this.polygonPreview);
+    const first = this.customVertices[0];
+    const raw = this.fabric.getScenePoint(event);
+    const distance = Math.hypot(raw.x - first.x, raw.y - first.y);
+    return (
+      this.samePolygonVertex(first, position) ||
+      distance * this.viewport.zoom <= POLYGON_CLOSE_DISTANCE
+    );
   }
 
-  /** 闭合至少三个不同顶点，归一化顶点后保存为普通可缩放对象 */
-  private finishPolygon(): void {
-    const points: BoardPoint[] = [];
-    for (const point of this.customVertices) {
-      const last = points[points.length - 1];
-      if (last === undefined || Math.hypot(last.x - point.x, last.y - point.y) > 2) {
-        points.push(point);
-      }
+  /** 比较顶点是否落在同一处，避免双击和同一吸附位置产生重复顶点 */
+  private samePolygonVertex(first: BoardPoint, second: BoardPoint): boolean {
+    return Math.hypot(first.x - second.x, first.y - second.y) * this.viewport.zoom < CLICK_DISTANCE;
+  }
+
+  /** 预览点使用与正式落点相同的吸附和闭合规则 */
+  private previewPolygon(event: TPointerEvent): void {
+    let position = this.getPosition(event);
+    const closing = this.canClosePolygon(event, position);
+    if (closing) {
+      position = this.customVertices[0];
     }
-    if (points.length < 3) {
+    this.feedback.setPolygon(this.customVertices, position, closing);
+  }
+
+  /** 松开鼠标后落点，点击起点闭合，重复点击同一位置不再添加顶点 */
+  private placePolygonVertex(event: TPointerEvent): void {
+    const position = this.getPosition(event);
+    if (this.canClosePolygon(event, position)) {
+      this.finishPolygon();
       return;
     }
-    let left = Infinity;
-    let top = Infinity;
-    let right = -Infinity;
-    let bottom = -Infinity;
-    for (const point of points) {
-      left = Math.min(left, point.x);
-      top = Math.min(top, point.y);
-      right = Math.max(right, point.x);
-      bottom = Math.max(bottom, point.y);
+    for (const vertex of this.customVertices) {
+      if (this.samePolygonVertex(vertex, position)) {
+        return;
+      }
     }
-    for (const point of points) {
-      point.x = point.x - left;
-      point.y = point.y - top;
+    if (this.customVertices.length >= MAX_POLYGON_POINTS) {
+      this.callbacks.notify("已达顶点上限，可点击起点闭合");
+      return;
     }
-    const shape = createShape("polygon", { x: left, y: top });
-    shape.width = right - left;
-    shape.height = bottom - top;
-    shape.points = points;
-    shape.sides = points.length;
+    this.customVertices.push(position);
+    this.feedback.setPolygon(this.customVertices, null, false);
+  }
+
+  /** 清除多边形草稿，不重建画布，也不修改作品 */
+  private clearPolygon(): void {
+    this.polygonPress = null;
+    if (this.customVertices.length > 0) {
+      this.customVertices = [];
+      this.feedback.setPolygon(this.customVertices, null, false);
+    }
+  }
+
+  /** 闭合至少三个顶点，复用多边形外框计算，再把草稿保存为一个对象 */
+  private finishPolygon(): void {
+    if (this.customVertices.length < MIN_POLYGON_SIDES) {
+      return;
+    }
+    if (this.document.shapes.length >= MAX_SHAPES) {
+      this.callbacks.notify("对象数量已达上限");
+      return;
+    }
+    const shape = createShape("polygon", { x: 0, y: 0 });
+    shape.points = this.customVertices;
+    shape.sides = shape.points.length;
+    fitPolygon(shape);
     shape.stroke = this.stroke;
     shape.fill = this.fill;
     shape.layer = this.document.shapes.length;
     this.document.shapes.push(shape);
-    this.customVertices = [];
-    this.polygonPreview = null;
+    this.clearPolygon();
     this.selectedIds = [shape.id];
     this.modificationPending = true;
     queueMicrotask(this.finishModification.bind(this));
@@ -1374,19 +1610,17 @@ export class BoardCanvas {
   /** 取消半成品图形，避免保存不完整的连接关系 */
   cancelGesture(): void {
     this.clearHold();
+    this.fabric.cancelBrushStroke();
     this.holdPanning = false;
     this.blankPanning = false;
     this.host.dataset.panning = "false";
-    this.constructionIds = [];
+    this.constructionPicks = [];
+    this.updateConstructionEdges(undefined);
     this.constructionClick = null;
     this.waitingForClick = false;
     this.finishingClick = false;
     this.segmentStart = "";
-    if (this.customVertices.length > 0) {
-      this.customVertices = [];
-      this.polygonPreview = null;
-      this.render();
-    }
+    this.clearPolygon();
     this.rightSelection = null;
     this.selectionClick = null;
     this.feedback.setMarquee(null);
@@ -1422,7 +1656,7 @@ export class BoardCanvas {
 
   /** 双击图形编辑标签，独立文字继续使用库的原生文字编辑 */
   private handleDoubleClick(event: TPointerEventInfo<TPointerEvent>): void {
-    if (this.tool === "custom-polygon" && !this.readOnly) {
+    if (this.tool === "custom-polygon" && !this.readOnly && !this.spacePressed) {
       this.finishPolygon();
       return;
     }
@@ -1500,8 +1734,11 @@ export class BoardCanvas {
     if (activeShape !== undefined && activeShape.relation.kind === "segment") {
       for (const source of activeShape.relation.sources) {
         const point = findShape(this.document, source);
+        const object = this.objects.get(source);
         if (
           point !== undefined &&
+          object !== undefined &&
+          object.visible &&
           Math.hypot(point.x - position.x, point.y - position.y) <=
             POINT_HIT_DISTANCE / this.viewport.zoom
         ) {
@@ -1822,6 +2059,15 @@ export class BoardCanvas {
     this.feedback.setHovered(null);
   }
 
+  /** 指针移出画布时只收起活动边，已落下的顶点可以继续使用 */
+  private handlePointerLeave(): void {
+    this.clearHover();
+    this.updateConstructionEdges(undefined);
+    if (this.customVertices.length > 0) {
+      this.feedback.setPolygon(this.customVertices, null, false);
+    }
+  }
+
   /** 系统取消触控手势时撤回草稿和未完成变换 */
   private handlePointerCancel(): void {
     this.rightSelection = null;
@@ -1857,11 +2103,16 @@ export class BoardCanvas {
       return;
     }
     event.preventDefault();
-    if (this.spacePressed || this.gesture !== null || this.transforming) {
+    if (
+      this.spacePressed ||
+      this.gesture !== null ||
+      this.transforming ||
+      this.fabric.hasBrushStroke()
+    ) {
       return;
     }
     this.spacePressed = true;
-    this.clearHover();
+    this.handlePointerLeave();
     this.updateToolMode();
     this.fabric.setCursor("grab");
   }

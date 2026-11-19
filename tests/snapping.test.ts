@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createDocument, createShape } from "../src/core/model";
+import { constructShape } from "../src/core/commands";
 import { snapPosition } from "../src/geometry/snapping";
 import { archiveContent } from "../src/storage/archive-content";
 import { createGeometryTemplate } from "../src/objects/templates";
@@ -33,6 +34,26 @@ function testBorderPriority(): void {
   assert.deepEqual(snapPosition(document, { x: 607, y: 501 }, true, 1, ""), { x: 600, y: 500 });
 }
 
+/** 拖动来源点时跳过整条依赖链，独立图形仍可作为吸附目标 */
+function testDependentShapesDoNotSnap(): void {
+  const document = createDocument();
+  const start = createShape("point", { x: 100, y: 137 });
+  const end = createShape("point", { x: 300, y: 137 });
+  document.shapes.push(start, end);
+  const line = constructShape(document, [start, end], "segment");
+  constructShape(document, [line], "midpoint");
+
+  const pointer = { x: 203, y: 144 };
+  const free = snapPosition(document, pointer, true, 1, start.id);
+  assert.deepEqual(free, { x: 200, y: 140 });
+
+  const guide = createShape("line", { x: 100, y: 147 });
+  guide.width = 200;
+  document.shapes.push(guide);
+  const snapped = snapPosition(document, pointer, true, 1, start.id);
+  assert.deepEqual(snapped, { x: 203, y: 147 });
+}
+
 /** 随机编号不同的同一内置作品应得到相同内容标识，编辑后则不同 */
 function testArchiveContent(): void {
   const first = createGeometryTemplate();
@@ -44,4 +65,5 @@ function testArchiveContent(): void {
 
 test("交点优先且不受网格取整影响", testIntersectionPriority);
 test("边框交点边框与网格按顺序吸附", testBorderPriority);
+test("来源点只吸附独立于自身的图形", testDependentShapesDoNotSnap);
 test("存档按内容比较并保留不同编辑", testArchiveContent);

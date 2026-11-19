@@ -38,6 +38,7 @@ export type RelationKind =
   | "perpendicular"
   | "bisector"
   | "fit"
+  | "point-on-outline"
   | "label";
 
 /** 保存函数解析式、绘制范围和拟合阶数，系数按常数项到最高次项排列 */
@@ -59,6 +60,10 @@ export interface Point {
 export interface Relation {
   kind: RelationKind;
   sources: string[];
+  // 与 sources 一一对应，null 表示直接使用对象，不指定某条边
+  sourceEdges?: (number | null)[];
+  // 函数使用数学横坐标，直线使用端点间的比例，封闭边框和路径使用轮廓进度
+  outlinePosition?: number;
   offsetX?: number;
   offsetY?: number;
   startOffset?: number;

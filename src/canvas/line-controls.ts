@@ -87,7 +87,6 @@ export class LineControls {
       -MAX_BEND_RATIO,
       Math.min(MAX_BEND_RATIO, (left - this.shape.x) / this.shape.width)
     );
-    this.shape.relation = { kind: "none", sources: [] };
     updateFabricGeometry(transform.target, this.shape, this.clip());
     this.changed();
     return true;

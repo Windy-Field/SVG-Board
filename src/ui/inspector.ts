@@ -146,6 +146,12 @@ function applyNumber(shape: Shape, property: string, value: number): boolean {
   if (property === "displayLength") {
     return setConstructionLength(shape, value);
   }
+  if (
+    shape.relation.kind === "point-on-outline" &&
+    ["x", "y", "coordinateX", "coordinateY", "width", "height", "rotation"].includes(property)
+  ) {
+    return false;
+  }
   if ((property === "coordinateX" || property === "coordinateY") && !shape.locked) {
     if (Math.abs(value) > MAX_MATH_COORDINATE) {
       return false;
@@ -391,7 +397,8 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     return;
   }
   const shape = selected[0];
-  const fixed = shape.locked || shape.kind === "function";
+  const fixed =
+    shape.locked || shape.kind === "function" || shape.relation.kind === "point-on-outline";
   const point = shape.kind === "point";
   let markup =
     '<section class="property-section"><div class="section-title"><h2>' +
@@ -531,6 +538,10 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
       '</select></label><label class="property-field"><span>对齐</span><select data-property="textAlign" aria-label="文字对齐"><option value="start">左对齐</option><option value="middle">居中</option><option value="end">右对齐</option></select></label></section>';
   }
   if (isDependent(shape)) {
+    let relationship = shape.relation.kind.toString();
+    if (shape.relation.kind === "point-on-outline") {
+      relationship = "沿边框或曲线移动";
+    }
     const names: string[] = [];
     for (const id of shape.relation.sources) {
       const source = findShape(document, id);
@@ -541,7 +552,7 @@ export function renderProperties(document: BoardDocument, selected: Shape[]): vo
     markup =
       markup +
       '<section class="property-section relationship"><h2>构造关系</h2><p>' +
-      escapeHtml(shape.relation.kind) +
+      escapeHtml(relationship) +
       "</p><p>" +
       escapeHtml(names.join("、")) +
       "</p></section>";

@@ -298,7 +298,7 @@ async function checkPanning(page: Page): Promise<void> {
   expect((await saved(page)).shapes.length).toBe(1);
 }
 
-/** 几何点的实际放置和拖动均优先使用函数曲线与矩形边框 */
+/** 检查点只沿原曲线或边框移动，关闭吸附和重开作品也不解除约束 */
 async function checkPointSnap(page: Page): Promise<void> {
   const document = createDocument();
   const curve = createFunctionShape({
@@ -317,19 +317,54 @@ async function checkPointSnap(page: Page): Promise<void> {
   const position = await screen(page, toCanvasPoint({ x: 2, y: 0.4 }));
   await page.mouse.click(position.x, position.y);
   const created = await saved(page);
+  const curvePoint = created.shapes[2];
+  expect(curvePoint.relation.kind).toBe("point-on-outline");
+  expect(curvePoint.relation.sources).toEqual([curve.id]);
   expect(created.shapes[2].y).toBeCloseTo(toCanvasPoint({ x: 2, y: 0.325 }).y, 1);
   await page.getByRole("button", { name: "选择", exact: true }).click();
-  await page.locator("#objects-tab").click();
-  await page.locator('[data-object-select="' + created.shapes[2].id + '"]').click();
-  const start = await screen(page, created.shapes[2]);
-  const target = await screen(page, { x: 302, y: 275 });
-  await page.mouse.move(start.x, start.y);
+  await page.locator("#snap-button").click();
+  const curveStart = await screen(page, curvePoint);
+  const curveTarget = await screen(page, { x: 438, y: 275 });
+  await page.mouse.move(curveStart.x, curveStart.y);
   await page.mouse.down();
-  await page.mouse.move(target.x, target.y, { steps: 8 });
+  await page.mouse.move(curveTarget.x, curveTarget.y, { steps: 8 });
   await page.mouse.up();
   const moved = await saved(page);
-  expect(moved.shapes[2].x).toBeCloseTo(300, 1);
-  expect(moved.shapes[2].y).toBeCloseTo(275, 1);
+  expect(moved.shapes[2].x).toBeCloseTo(438, 1);
+  expect(moved.shapes[2].y).toBeCloseTo(curvePoint.y, 1);
+  expect(moved.shapes[2].relation.sources).toEqual([curve.id]);
+
+  await page.getByRole("button", { name: "几何点", exact: true }).click();
+  const borderStart = await screen(page, { x: 300, y: 265 });
+  await page.mouse.click(borderStart.x, borderStart.y);
+  const withBorder = await saved(page);
+  const borderPoint = withBorder.shapes[4];
+  expect(borderPoint.relation.sources).toEqual([rectangle.id]);
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  const borderTarget = await screen(page, { x: 245, y: 292 });
+  await page.mouse.move(borderStart.x, borderStart.y);
+  await page.mouse.down();
+  await page.mouse.move(borderTarget.x, borderTarget.y, { steps: 8 });
+  await page.mouse.up();
+  const movedBorder = await saved(page);
+  expect(movedBorder.shapes[4].x).toBeCloseTo(300, 1);
+  expect(movedBorder.shapes[4].y).toBeCloseTo(292, 1);
+  await page.keyboard.press("Shift+ArrowUp");
+  const nudged = await saved(page);
+  expect(nudged.shapes[4].y).toBeCloseTo(282, 1);
+  expect(nudged.shapes[4].relation.sources).toEqual([rectangle.id]);
+
+  await page.reload();
+  await expect(page.locator("#object-count")).toHaveText("6 个对象");
+  await page.locator("#objects-tab").click();
+  await page.locator('[data-object-select="' + rectangle.id + '"]').click();
+  await page.locator("#properties-tab").click();
+  const horizontal = page.getByRole("spinbutton", { name: "X", exact: true });
+  await horizontal.fill("340");
+  await horizontal.press("Tab");
+  const translated = await saved(page);
+  expect(translated.shapes[4].x).toBeCloseTo(340, 1);
+  expect(translated.shapes[4].y).toBeCloseTo(282, 1);
 }
 
 /** 平移时锁标记始终位于直线保存的方向点外框旁，不跟随裁剪边缘 */
@@ -477,7 +512,7 @@ test("函数绘制属性与快捷键隐藏", testFunction);
 test("多项式拟合来源点联动", testFit);
 test("射线直线与真实比例尺", testLinesAndScale);
 test("空白直接平移与对象绘图长按平移", testPanning);
-test("几何点放置拖动优先吸附曲线边框", testPointSnap);
+test("边框和曲线上的点不会脱离来源且保存后仍联动", testPointSnap);
 test("锁标记平移时保持固定几何位置", testLockPosition);
 test("锁标记随来源点拖动立即更新", testDependentLock);
 test("坐标轴吸附与连续点名及交点图标", testAxisSnap);

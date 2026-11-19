@@ -333,8 +333,9 @@ async function checkArchives(page: Page): Promise<void> {
 async function checkShapes(page: Page): Promise<void> {
   await openBoard(page, createDocument());
   await mode(page, "rectangles", "正方形");
-  await drag(page, await screen(page, { x: 200, y: 200 }), await screen(page, { x: 320, y: 270 }));
+  await drag(page, await screen(page, { x: 200, y: 200 }), await screen(page, { x: 320, y: 200 }));
   let document = await saved(page);
+  expect(document.shapes[0].width).toBeCloseTo(120, 4);
   expect(document.shapes[0].width).toBeCloseTo(document.shapes[0].height, 4);
   await expect(page.locator('[data-tool-group="rectangles"]')).toHaveAttribute(
     "aria-pressed",
@@ -380,6 +381,110 @@ async function checkShapes(page: Page): Promise<void> {
   }
   const restored = parseDocument(await page.evaluate(readRestored));
   expect(restored.shapes[3].path).toBe(changed.shapes[3].path);
+}
+
+/** 读取目标附近的蓝色预览或绿色构造线，避免单个像素受抗锯齿影响 */
+async function hasPreviewInk(
+  page: Page,
+  position: Point,
+  construction: boolean = false
+): Promise<boolean> {
+  /** 将屏幕位置换算成画布像素，再查找对应的笔画颜色 */
+  function sample(canvas: Element, target: { position: Point; construction: boolean }): boolean {
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("未找到绘图画布");
+    }
+    const context = canvas.getContext("2d");
+    if (context === null) {
+      throw new Error("无法读取画布像素");
+    }
+    const bounds = canvas.getBoundingClientRect();
+    const point = target.position;
+    const scale = canvas.width / bounds.width;
+    const left = Math.round((point.x - bounds.x - 6) * scale);
+    const top = Math.round((point.y - bounds.y - 6) * scale);
+    const size = Math.round(12 * scale);
+    const pixels = context.getImageData(left, top, size, size).data;
+    for (let index = 0; index < pixels.length; index = index + 4) {
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      if (target.construction && green - red > 65 && green - blue > 15) {
+        return true;
+      }
+      if (!target.construction && blue - red > 90) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const canvas = page.locator(".lower-canvas");
+  return canvas.evaluate(sample, { position: position, construction: construction });
+}
+
+/** 在不按鼠标时检查活动边，确认草稿可取消，点回起点仅提交一个图形 */
+async function checkPolygonPreview(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  await page.locator("#grid-button").click();
+  await page.locator("#axes-button").click();
+  await mode(page, "polygons", "自定义多边形");
+  const first = await screen(page, { x: 180, y: 200 });
+  const second = await screen(page, { x: 440, y: 200 });
+  const third = await screen(page, { x: 180, y: 480 });
+  const horizontal = await screen(page, { x: 310, y: 200 });
+  const vertical = await screen(page, { x: 180, y: 340 });
+  await page.mouse.click(first.x, first.y);
+  await page.mouse.move(second.x, second.y);
+  await expect.poll(hasPreviewInk.bind(null, page, horizontal)).toBe(true);
+  await page.mouse.move(third.x, third.y);
+  await expect.poll(hasPreviewInk.bind(null, page, vertical)).toBe(true);
+  await expect.poll(hasPreviewInk.bind(null, page, horizontal)).toBe(false);
+  await expect(page.locator("#object-count")).toHaveText("0 个对象");
+  await page.keyboard.press("Escape");
+  await expect.poll(hasPreviewInk.bind(null, page, vertical)).toBe(false);
+  await expect(page.locator("#object-count")).toHaveText("0 个对象");
+
+  await page.getByRole("button", { name: "自定义多边形", exact: true }).click();
+  await page.mouse.click(first.x, first.y);
+  await page.mouse.click(second.x, second.y);
+  await page.mouse.click(third.x, third.y);
+  await page.mouse.move(first.x + 5, first.y);
+  await expect.poll(hasPreviewInk.bind(null, page, horizontal)).toBe(true);
+  await expect.poll(hasPreviewInk.bind(null, page, vertical)).toBe(true);
+  await page.mouse.click(first.x + 5, first.y);
+  const document = await saved(page);
+  expect(document.shapes.length).toBe(1);
+  expect(document.shapes[0].points.length).toBe(3);
+  await expect(page.getByRole("button", { name: "自定义多边形", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(page.locator("#object-count")).toHaveText("0 个对象");
+}
+
+/** 检查取消未松手的笔画后，新笔画不会带上旧路径 */
+async function checkPencilCancel(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  await page.getByRole("button", { name: "自由画笔", exact: true }).click();
+  const start = await screen(page, { x: 200, y: 200 });
+  const end = await screen(page, { x: 400, y: 300 });
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 5 });
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(page.locator("#object-count")).toHaveText("0 个对象");
+
+  await page.getByRole("button", { name: "自由画笔", exact: true }).click();
+  const nextStart = await screen(page, { x: 600, y: 400 });
+  const nextEnd = await screen(page, { x: 720, y: 460 });
+  await drag(page, nextStart, nextEnd);
+  const document = await saved(page);
+  expect(document.shapes.length).toBe(1);
+  expect(document.shapes[0].kind).toBe("pencil");
+  expect(document.shapes[0].x).toBeGreaterThan(590);
 }
 
 /** 验证浮动文字配置、说明预览净化和侧栏让出真实画布空间 */
@@ -639,6 +744,98 @@ async function checkClickPlacement(page: Page): Promise<void> {
   const moved = await saved(page);
   const dependent = moved.shapes[moved.shapes.length - 1];
   expect(dependent.x).toBeCloseTo(moved.shapes[2].x, 3);
+}
+
+/** 线段与箭头两端落在现有点上时，点移动后对象应跟随更新 */
+async function checkDrawnLinesFollowPoints(page: Page): Promise<void> {
+  const document = createDocument();
+  const first = createShape("point", { x: 200, y: 200 });
+  const second = createShape("point", { x: 500, y: 200 });
+  document.shapes.push(first, second);
+  await openBoard(page, document);
+
+  await page.getByRole("button", { name: "线段", exact: true }).click();
+  const firstPosition = await screen(page, first);
+  const secondPosition = await screen(page, second);
+  await page.mouse.click(firstPosition.x, firstPosition.y);
+  await page.mouse.click(secondPosition.x, secondPosition.y);
+  let savedDocument = await saved(page);
+  const line = savedDocument.shapes[2];
+  expect(line.relation.kind).toBe("segment");
+  expect(line.relation.sources).toEqual([first.id, second.id]);
+
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  await page.locator("#objects-tab").click();
+  const selectedPoint = page.locator('[data-object-select="' + first.id + '"]');
+  await selectedPoint.click();
+  await page.locator("#properties-tab").click();
+  const horizontal = page.getByRole("spinbutton", { name: "X", exact: true });
+  await horizontal.fill("240");
+  await horizontal.press("Tab");
+  savedDocument = await saved(page);
+  expect(savedDocument.shapes[2].x).toBeCloseTo(240, 4);
+  expect(savedDocument.shapes[2].width).toBeCloseTo(260, 4);
+
+  const arrowStart = await screen(page, savedDocument.shapes[0]);
+  const arrowEnd = await screen(page, savedDocument.shapes[1]);
+  await mode(page, "lines", "箭头");
+  await page.mouse.click(arrowStart.x, arrowStart.y);
+  await page.mouse.click(arrowEnd.x, arrowEnd.y);
+  savedDocument = await saved(page);
+  const arrow = savedDocument.shapes[3];
+  expect(arrow.kind).toBe("arrow");
+  expect(arrow.relation.sources).toEqual([first.id, second.id]);
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  await page.locator("#objects-tab").click();
+  await selectedPoint.click();
+  await page.locator("#properties-tab").click();
+  await horizontal.fill("270");
+  await horizontal.press("Tab");
+  savedDocument = await saved(page);
+  expect(savedDocument.shapes[2].x).toBeCloseTo(270, 4);
+  expect(savedDocument.shapes[3].x).toBeCloseTo(270, 4);
+}
+
+/** 吸附开启时拖动来源点，松手前直线和后续中点就要出现在新位置 */
+async function checkLiveConstructionDrag(page: Page): Promise<void> {
+  const document = createDocument();
+  const first = createShape("point", { x: 200, y: 200 });
+  const second = createShape("point", { x: 520, y: 200 });
+  document.shapes.push(first, second);
+  await openBoard(page, document);
+  await page.locator("#snap-button").click();
+  await page.getByRole("button", { name: "两点直线", exact: true }).click();
+  const start = await screen(page, first);
+  const end = await screen(page, second);
+  await page.mouse.click(start.x, start.y);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole("button", { name: "中点", exact: true }).click();
+  const constructed = await saved(page);
+  const line = constructed.shapes[2];
+  const midpoint = constructed.shapes[3];
+  expect(line.relation.sources).toEqual([first.id, second.id]);
+  expect(midpoint.relation.sources).toEqual([line.id]);
+
+  await page.getByRole("button", { name: "选择", exact: true }).click();
+  const oldStroke = await screen(page, { x: 280, y: 200 });
+  const newStroke = await screen(page, { x: 280, y: 275 });
+  const destination = await screen(page, { x: 200, y: 300 });
+  await expect.poll(hasPreviewInk.bind(null, page, oldStroke, true)).toBe(true);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(destination.x, destination.y, { steps: 10 });
+  await expect.poll(hasPreviewInk.bind(null, page, newStroke, true)).toBe(true);
+  await expect.poll(hasPreviewInk.bind(null, page, oldStroke, true)).toBe(false);
+  await page.mouse.up();
+
+  const moved = await saved(page);
+  expect(moved.shapes[0].y).toBe(300);
+  expect(moved.shapes[2].y).toBe(300);
+  expect(moved.shapes[3].y).toBe(250);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  const restored = await saved(page);
+  expect(restored.shapes[0].y).toBe(200);
+  expect(restored.shapes[3].y).toBe(200);
 }
 
 /** 验证标题栏控件布局、标签居中、界面文字选择与保存导出职责 */
@@ -1001,6 +1198,113 @@ async function checkConstructionMethods(page: Page): Promise<void> {
   expect(constructed.shapes.length).toBe(before.shapes.length + 2);
 }
 
+/** 从整图选区生成各边中点，撤销后用矩形和补选的点批量作垂线 */
+async function checkWholeShapeConstruction(page: Page): Promise<void> {
+  const document = createDocument();
+  const polygon = createShape("polygon", { x: 200, y: 200 });
+  polygon.width = 200;
+  polygon.height = 160;
+  polygon.sides = 3;
+  polygon.points = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 70, y: 160 }
+  ];
+  const rectangle = createShape("rect", { x: 500, y: 200 });
+  rectangle.width = 200;
+  rectangle.height = 160;
+  const point = createShape("point", { x: 800, y: 400 });
+  document.shapes.push(polygon, rectangle, point);
+  await openBoard(page, document);
+
+  const insidePolygon = await screen(page, { x: 280, y: 255 });
+  await page.mouse.click(insidePolygon.x, insidePolygon.y);
+  await page.getByRole("button", { name: "中点", exact: true }).click();
+  const withMidpoints = await saved(page);
+  const edges: number[] = [];
+  for (const shape of withMidpoints.shapes) {
+    if (shape.relation.kind === "midpoint" && shape.relation.sourceEdges !== undefined) {
+      expect(shape.relation.sources).toEqual([polygon.id]);
+      const edge = shape.relation.sourceEdges[0];
+      if (edge !== null) {
+        edges.push(edge);
+      }
+    }
+  }
+  expect(edges).toEqual([0, 1, 2]);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(page.locator("#object-count")).toHaveText("3 个对象");
+
+  const insideRectangle = await screen(page, { x: 600, y: 270 });
+  await page.mouse.click(insideRectangle.x, insideRectangle.y);
+  await page.getByRole("button", { name: "垂线", exact: true }).click();
+  await expect(page.locator("#message")).toHaveText("再选一个点");
+  const pointPosition = await screen(page, point);
+  await page.mouse.click(pointPosition.x, pointPosition.y);
+  const withPerpendiculars = await saved(page);
+  expect(withPerpendiculars.shapes.length).toBe(7);
+  for (let index = 0; index < 4; index = index + 1) {
+    const line = withPerpendiculars.shapes[index + 3];
+    expect(line.relation.kind).toBe("perpendicular");
+    expect(line.relation.sources).toEqual([rectangle.id, point.id]);
+    expect(line.relation.sourceEdges).toEqual([index, null]);
+  }
+}
+
+/** 导入后点选同一矩形的两条边，交点保存后仍跟随矩形移动 */
+async function checkImportedEdges(page: Page): Promise<void> {
+  await openBoard(page, createDocument());
+  const markup =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 600"><rect x="160" y="140" width="240" height="180" fill="#ffffff" stroke="#333333"/></svg>';
+  const input = page.locator("#file-input");
+  await input.setInputFiles({
+    name: "frame.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(markup)
+  });
+  await expect(page.locator("#object-count")).toHaveText("1 个对象");
+  await page.getByRole("button", { name: "适应画布", exact: true }).click();
+  const document = await saved(page);
+  const frame = document.shapes[0];
+  expect(frame.kind).toBe("rect");
+  const top = await screen(page, { x: frame.x + frame.width / 2, y: frame.y });
+  const left = await screen(page, { x: frame.x, y: frame.y + frame.height / 2 });
+  const middle = await screen(page, {
+    x: frame.x + frame.width / 2,
+    y: frame.y + frame.height / 2
+  });
+  await page.getByRole("button", { name: "交点", exact: true }).click();
+  await page.mouse.click(middle.x, middle.y);
+  await expect.poll(hasPreviewInk.bind(null, page, top)).toBe(false);
+  await page.mouse.move(top.x, top.y);
+  await expect.poll(hasPreviewInk.bind(null, page, top)).toBe(true);
+  await page.mouse.click(top.x, top.y);
+  await page.mouse.move(left.x, left.y);
+  await expect.poll(hasPreviewInk.bind(null, page, top)).toBe(true);
+  await page.mouse.click(left.x, left.y);
+  const constructed = await saved(page);
+  const intersection = constructed.shapes[1];
+  expect(intersection.locked).toBe(true);
+  expect(intersection.relation.sources).toEqual([frame.id, frame.id]);
+  expect(intersection.relation.sourceEdges).toEqual([0, 3]);
+  expect(intersection.x).toBeCloseTo(frame.x, 4);
+  expect(intersection.y).toBeCloseTo(frame.y, 4);
+
+  await page.reload();
+  await expect(page.locator("#object-count")).toHaveText("3 个对象");
+  await page.locator("#objects-tab").click();
+  const source = page.locator('[data-object-select="' + frame.id + '"]');
+  await source.click();
+  await page.locator("#properties-tab").click();
+  const horizontal = page.getByRole("spinbutton", { name: "X", exact: true });
+  const nextX = Math.round(frame.x) + 60;
+  await horizontal.fill(String(nextX));
+  await horizontal.press("Tab");
+  const moved = await saved(page);
+  expect(moved.shapes[1].x).toBeCloseTo(nextX, 4);
+  expect(moved.shapes[1].y).toBeCloseTo(frame.y, 4);
+}
+
 /** 存档、字体和工具分组选项重复点击均能收起，存档菜单尺寸与触发栏一致 */
 async function checkMenuToggle(page: Page): Promise<void> {
   await openBoard(page, createDocument());
@@ -1134,6 +1438,16 @@ async function testShapes(): Promise<void> {
   await runBrowser(checkShapes);
 }
 
+/** 在浏览器验证多边形的活动边、闭合与撤销 */
+async function testPolygonPreview(): Promise<void> {
+  await runBrowser(checkPolygonPreview);
+}
+
+/** 在浏览器验证未完成的笔画可以取消 */
+async function testPencilCancel(): Promise<void> {
+  await runBrowser(checkPencilCancel);
+}
+
 /** 检查文字、说明和布局 */
 async function testTextAndDescription(): Promise<void> {
   await runBrowser(checkTextAndDescription);
@@ -1179,6 +1493,16 @@ async function testClickPlacement(): Promise<void> {
   await runBrowser(checkClickPlacement);
 }
 
+/** 在浏览器检查线段和箭头是否保持与端点的关联 */
+async function testDrawnLinesFollowPoints(): Promise<void> {
+  await runBrowser(checkDrawnLinesFollowPoints);
+}
+
+/** 检查实时联动与整次拖动的撤销记录 */
+async function testLiveConstructionDrag(): Promise<void> {
+  await runBrowser(checkLiveConstructionDrag);
+}
+
 /** 检查标题栏和保存导出 */
 async function testHeaderAndExport(): Promise<void> {
   await runBrowser(checkHeaderAndExport);
@@ -1217,6 +1541,16 @@ async function testHoldPan(): Promise<void> {
 /** 检查几何工具的两种构造顺序 */
 async function testConstructionMethods(): Promise<void> {
   await runBrowser(checkConstructionMethods);
+}
+
+/** 在浏览器验证 SVG 直边的高亮、保存和构造联动 */
+async function testImportedEdges(): Promise<void> {
+  await runBrowser(checkImportedEdges);
+}
+
+/** 用浏览器检查先选整图的批量构造和补选来源 */
+async function testWholeShapeConstruction(): Promise<void> {
+  await runBrowser(checkWholeShapeConstruction);
 }
 
 /** 检查菜单收起与存档菜单布局 */
@@ -1545,6 +1879,8 @@ test("只读模式覆盖鼠标属性和快捷键", testReadOnly);
 test("存档新建切换与删除确认", testArchives);
 test("只读箭头端点不可修改", testReadOnlyLine);
 test("多边形模式与贝塞尔控制点保存", testShapes);
+test("多边形实时预览并点回起点闭合", testPolygonPreview);
+test("取消画笔后可重新绘制", testPencilCancel);
 test("浮动文字配置说明净化与侧栏扩展", testTextAndDescription);
 test("折线中段调整与撤销", testBend);
 test("存档去重标题单行与删除悬停颜色", testArchiveDuplicates);
@@ -1554,6 +1890,8 @@ test("空白工作台截图", testWorkspaceScreenshot);
 test("默认吸附与线条端点交点优先", testEndpointIntersections);
 test("旧存档合并重复并保留编辑副本", testLegacyDuplicates);
 test("点击放置线圆与两点直线", testClickPlacement);
+test("线段和箭头跟随用户已有的端点移动", testDrawnLinesFollowPoints);
+test("吸附开启时两点直线和中点随拖动实时更新", testLiveConstructionDrag);
 test("标题栏存档与保存透明导出", testHeaderAndExport);
 test("右键框选笔画与已有多选", testMarqueeEdges);
 test("对象管理隐藏仅作用目标并显示锁定", testObjectManagement);
@@ -1562,5 +1900,7 @@ test("画布颜色保存与导出预览无溢出", testBackgroundAndPreview);
 test("文字配置栏独立菜单与响应式布局", testTextToolbarLayout);
 test("长按左键平移与快速拖动对象", testHoldPan);
 test("所有几何方法支持先选工具再选来源", testConstructionMethods);
+test("导入 SVG 的两条边可分别选择并联动", testImportedEdges);
+test("先选整图再批量取中点和作垂线", testWholeShapeConstruction);
 test("存档字体工具菜单重复点击收起", testMenuToggle);
 test("构造对象默认锁定且长度可调", testConstructionLocks);

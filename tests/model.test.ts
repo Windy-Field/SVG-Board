@@ -4,6 +4,7 @@ import { constructShape, deleteShapes, pasteShapes } from "../src/core/commands"
 import { parseDocument } from "../src/storage/document";
 import {
   getLinePoints,
+  lineFromOutlineEdge,
   resizeConstructionLine,
   setConstructionLength,
   updateRelations
@@ -15,7 +16,9 @@ import {
   MAX_NAME_LENGTH,
   MAX_SHAPES
 } from "../src/core/model";
-import { constructSelection } from "../src/core/construction-batch";
+import { constructSelection, expandConstructionSelection } from "../src/core/construction-batch";
+import { straightOutlineEdges } from "../src/geometry/outlines";
+import { attachNewPoint, slideAttachedPoint } from "../src/geometry/point-attachment";
 import { createFlowTemplate, createGeometryTemplate } from "../src/objects/templates";
 import { isRecord } from "../src/core/validation";
 import { createFunctionShape } from "../src/math/plots";
@@ -58,6 +61,145 @@ function testBatchIntersections(): void {
   assert.equal(parseDocument(JSON.stringify(board)).shapes.length, count);
 }
 test("批量求交跳过已有点、共点和无效配对", testBatchIntersections);
+
+/** 顶边编号为零，圆角和旋转改变后仍指向同一条边 */
+function testConstructionEdge(): void {
+  const board = createDocument();
+  const frame = createShape("rect", { x: 20, y: 30 });
+  frame.width = 120;
+  frame.height = 80;
+  board.shapes.push(frame);
+  const edges = straightOutlineEdges(frame);
+  const line = lineFromOutlineEdge(frame, edges[0]);
+  const sourceEdges = new Map();
+  sourceEdges.set(line, 0);
+  const result = constructSelection(board, [line], "midpoint", sourceEdges);
+  const midpoint = result.created[0];
+  assert.equal(midpoint.x, 80);
+  assert.equal(midpoint.y, 30);
+  frame.cornerRadius = 15;
+  frame.rotation = 90;
+  updateRelations(board);
+  assert.equal(midpoint.x, 120);
+  assert.equal(midpoint.y, 70);
+  assert.deepEqual(midpoint.relation.sourceEdges, [0]);
+  assert.equal(parseDocument(JSON.stringify(board)).shapes[1].x, 120);
+
+  midpoint.relation.sourceEdges = [4];
+  /** 读取边号超出实际边数的作品，确认它不会被当成有效来源 */
+  function readInvalidEdge(): void {
+    parseDocument(JSON.stringify(board));
+  }
+  assert.throws(readInvalidEdge, /构造来源不是有效直边/);
+}
+test("构造中点在圆角和旋转改变后保留顶边", testConstructionEdge);
+
+/** 整选图形后，各几何工具按直边计算，不把边的延长线当作图形的一部分 */
+function testWholeShapeConstruction(): void {
+  const board = createDocument();
+  const frame = createShape("polygon", { x: 0, y: 0 });
+  frame.width = 240;
+  frame.height = 80;
+  frame.sides = 5;
+  frame.points = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 240, y: 40 },
+    { x: 160, y: 80 },
+    { x: 0, y: 80 }
+  ];
+  const point = createShape("point", { x: 300, y: 300 });
+  board.shapes.push(frame, point);
+  const cases: { kind: ConstructionTool; count: number }[] = [
+    { kind: "intersection", count: 5 },
+    { kind: "bisector", count: 5 },
+    { kind: "midpoint", count: 5 },
+    { kind: "parallel", count: 5 },
+    { kind: "perpendicular", count: 5 }
+  ];
+  for (const item of cases) {
+    const selection = expandConstructionSelection([frame, point], item.kind);
+    const result = constructSelection(board, selection.sources, item.kind, selection.edges);
+    assert.equal(result.created.length, item.count, item.kind);
+    for (const shape of result.created) {
+      assert.equal(shape.relation.sources[0], frame.id);
+      assert.ok(shape.relation.sourceEdges);
+      assert.equal(shape.locked, true);
+    }
+    if (item.kind === "bisector") {
+      const corner = result.created[1];
+      assert.deepEqual(corner.relation.sourceEdges, [0, 4]);
+      assert.ok(corner.width > 0 && corner.height > 0);
+    }
+  }
+  const restored = parseDocument(JSON.stringify(board));
+  assert.equal(updateRelations(restored).size, 0);
+}
+test("整选多边形可批量取中点、交点及构造线", testWholeShapeConstruction);
+
+/** SVG 路径保留直线命令的真实端点，不跨越曲线或子路径 */
+function testSvgStraightEdges(): void {
+  const shape = createShape("path", { x: 100, y: 200 });
+  shape.width = 80;
+  shape.height = 40;
+  shape.path = "M 20 30 H 60 Q 60 45 40 50 M 20 50 L 30 50";
+  const edges = straightOutlineEdges(shape);
+  assert.deepEqual(edges, [
+    { start: { x: 100, y: 200 }, end: { x: 180, y: 200 } },
+    { start: { x: 100, y: 240 }, end: { x: 120, y: 240 } }
+  ]);
+}
+test("SVG 路径只提取实际存在的直线段", testSvgStraightEdges);
+
+/** 曲线上的点用路径参数定位，拖动和重新载入后仍能带动后续直线 */
+function testAttachedCurvePoint(): void {
+  const board = createDocument();
+  const view = { x: 0, y: 0, width: board.width, height: board.height };
+  const curve = createShape("path", { x: 100, y: 100 });
+  curve.width = 200;
+  // 使用 Fabric 的原始路径外框高度，让测试曲线不额外缩放
+  curve.height = 150;
+  curve.path = "M 0 0 Q 100 200 200 0";
+  board.shapes.push(curve);
+  const point = createShape("point", { x: 200, y: 200 });
+  attachNewPoint(board, point, point, 1, view, new Set<string>());
+  assert.equal(point.relation.kind, "point-on-outline");
+  const end = createShape("point", { x: 500, y: 200 });
+  board.shapes.push(point, end);
+  constructShape(board, [point, end], "segment");
+
+  const reopened = parseDocument(JSON.stringify(board));
+  const source = reopened.shapes[0];
+  const attached = reopened.shapes[1];
+  const line = reopened.shapes[3];
+  slideAttachedPoint(reopened, attached, { x: 250, y: 240 }, view);
+  assert.ok(attached.x > 200);
+  const fraction = (attached.x - source.x) / source.width;
+  const expectedHeight = 400 * fraction * (1 - fraction);
+  assert.ok(Math.abs(attached.y - source.y - expectedHeight) < 0.000001);
+  const previousX = attached.x;
+  source.x = source.x + 60;
+  updateRelations(reopened);
+  assert.ok(Math.abs(attached.x - previousX - 60) < 0.000001);
+  assert.equal(line.x, attached.x);
+  assert.equal(line.y, attached.y);
+}
+test("曲线上的点保留路径位置并带动后续构造", testAttachedCurvePoint);
+
+/** 不把 SVG 子路径之间的空白当成能依附的边 */
+function testAttachmentSkipsPathGap(): void {
+  const board = createDocument();
+  const source = createShape("path", { x: 100, y: 100 });
+  source.width = 200;
+  source.height = 1;
+  source.path = "M 0 0 L 40 0 M 160 0 L 200 0";
+  board.shapes.push(source);
+  const point = createShape("point", { x: 200, y: 100 });
+  const view = { x: 0, y: 0, width: board.width, height: board.height };
+  attachNewPoint(board, point, point, 1, view, new Set<string>());
+  assert.equal(point.relation.kind, "none");
+}
+test("路径断开的位置仍可创建自由点", testAttachmentSkipsPathGap);
 
 /** 每个选中点和每条选中线配对，并保持来源关系与统一的撤销记录 */
 function testBatchLines(): void {

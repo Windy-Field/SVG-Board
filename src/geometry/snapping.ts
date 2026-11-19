@@ -1,5 +1,5 @@
 import Flatten from "@flatten-js/core";
-import { getLinePoints } from "./geometry";
+import { getDependentIds, getLinePoints } from "./geometry";
 import { GRID_SIZE, isLine, getRotatedBounds } from "../core/model";
 import { outlinePoints } from "./outlines";
 import type { BoardDocument, Point } from "../core/types";
@@ -58,6 +58,11 @@ export function snapPosition(
   if (!enabled) {
     return { x: position.x, y: position.y };
   }
+  // 正被拖动的点不能吸附到由它算出的线或下游构造，否则会被拉回旧位置
+  let excludedIds = new Set<string>();
+  if (excluded !== "") {
+    excludedIds = getDependentIds(document, [excluded]);
+  }
   const radius = SNAP_DISTANCE / zoom;
   const pointer = new Flatten.Point(position.x, position.y);
   const edges: Edge[] = [];
@@ -78,10 +83,7 @@ export function snapPosition(
   }
   for (const item of document.shapes) {
     let shape = item;
-    if (shape.id === excluded || shape.hidden) {
-      continue;
-    }
-    if (shape.relation.kind === "label" && shape.relation.sources[0] === excluded) {
+    if (excludedIds.has(shape.id) || shape.hidden) {
       continue;
     }
     if (hasOpenDomain(shape.formula)) {

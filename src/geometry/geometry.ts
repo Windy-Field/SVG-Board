@@ -2,6 +2,9 @@ import Flatten from "@flatten-js/core";
 import { findShape, getBounds, MAX_COORDINATE } from "../core/model";
 import type { BoardDocument, Point, Shape } from "../core/types";
 import { updateFittedFunction } from "../math/plots";
+import { straightOutlineEdges } from "./outlines";
+import type { OutlineEdge } from "./outlines";
+import { attachedPointPosition } from "./point-attachment";
 
 // 小于此长度时按退化几何处理，单位为画布坐标
 const MIN_LENGTH = 0.000001;
@@ -134,7 +137,7 @@ export function getLinePoints(shape: Shape): Point[] {
 }
 
 /** 求两条线所在直线的唯一交点，退化、平行或重合时返回空值 */
-export function findLineIntersection(first: Shape, second: Shape): Point | null {
+function findLineIntersection(first: Shape, second: Shape): Point | null {
   if (Math.hypot(first.width, first.height) < MIN_LENGTH) {
     return null;
   }
@@ -159,6 +162,55 @@ export function findLineIntersection(first: Shape, second: Shape): Point | null 
   return { x: intersection.x, y: intersection.y };
 }
 
+/** 判断交点是否在线段的端点之间，给计算误差留出少量余地 */
+function isOnLineSegment(line: Shape, position: Point): boolean {
+  const ends = getLinePoints(line);
+  const left = Math.min(ends[0].x, ends[1].x) - MIN_LENGTH;
+  const right = Math.max(ends[0].x, ends[1].x) + MIN_LENGTH;
+  const top = Math.min(ends[0].y, ends[1].y) - MIN_LENGTH;
+  const bottom = Math.max(ends[0].y, ends[1].y) + MIN_LENGTH;
+  return position.x >= left && position.x <= right && position.y >= top && position.y <= bottom;
+}
+
+/** 图形边只在实际边长内求交，直接选中的线保留原有的延长求交方式 */
+export function findConstructionIntersection(
+  first: Shape,
+  second: Shape,
+  firstIsEdge: boolean,
+  secondIsEdge: boolean
+): Point | null {
+  const position = findLineIntersection(first, second);
+  if (position === null) {
+    return null;
+  }
+  if (firstIsEdge && !isOnLineSegment(first, position)) {
+    return null;
+  }
+  if (secondIsEdge && !isOnLineSegment(second, position)) {
+    return null;
+  }
+  return position;
+}
+
+/** 判断该来源是否指定了图形上的一条边 */
+function hasSourceEdge(shape: Shape, index: number): boolean {
+  const edges = shape.relation.sourceEdges;
+  return edges !== undefined && typeof edges[index] === "number";
+}
+
+/** 返回线的单位方向，图形边在公共端点处朝另一端取方向 */
+function bisectorDirection(line: Shape, origin: Point, isEdge: boolean): Point {
+  const ends = getLinePoints(line);
+  let horizontal = ends[1].x - ends[0].x;
+  let vertical = ends[1].y - ends[0].y;
+  const length = Math.hypot(horizontal, vertical);
+  if (isEdge && Math.hypot(ends[1].x - origin.x, ends[1].y - origin.y) <= MIN_LENGTH) {
+    horizontal = -horizontal;
+    vertical = -vertical;
+  }
+  return { x: horizontal / length, y: vertical / length };
+}
+
 /** 写入线的起点与方向，构造对象统一使用不旋转的画布坐标 */
 function setLine(shape: Shape, start: Point, end: Point): void {
   shape.x = start.x;
@@ -166,6 +218,38 @@ function setLine(shape: Shape, start: Point, end: Point): void {
   shape.width = end.x - start.x;
   shape.height = end.y - start.y;
   shape.rotation = 0;
+}
+
+/** 用指定边的两个端点参与直线计算，不改动来源图形 */
+export function lineFromOutlineEdge(shape: Shape, edge: OutlineEdge): Shape {
+  const line = Object.assign({}, shape);
+  line.kind = "line";
+  line.lineType = "segment";
+  setLine(line, edge.start, edge.end);
+  return line;
+}
+
+/** 按来源编号找对象，指定边号时用边代替整个图形 */
+function relationSource(document: BoardDocument, shape: Shape, index: number): Shape | undefined {
+  const relation = shape.relation;
+  const source = findShape(document, relation.sources[index]);
+  if (source === undefined || relation.sourceEdges === undefined) {
+    return source;
+  }
+  const edge = relation.sourceEdges[index];
+  if (edge === null || edge === undefined) {
+    return source;
+  }
+  const edges = straightOutlineEdges(source);
+  const outline = edges[edge];
+  if (outline === undefined) {
+    return undefined;
+  }
+  const length = Math.hypot(outline.end.x - outline.start.x, outline.end.y - outline.start.y);
+  if (length < MIN_LENGTH) {
+    return undefined;
+  }
+  return lineFromOutlineEdge(source, outline);
 }
 
 /** 在来源决定的端点上加上显示偏移，来源转动时偏移也沿新方向计算 */
@@ -214,10 +298,26 @@ export function updateRelation(document: BoardDocument, shape: Shape): boolean {
       return false;
     }
   }
-  const first = findShape(document, relation.sources[0]);
-  const second = findShape(document, relation.sources[1]);
+  const first = relationSource(document, shape, 0);
+  const second = relationSource(document, shape, 1);
   if (first === undefined) {
     return false;
+  }
+  if (relation.kind === "point-on-outline") {
+    if (relation.outlinePosition === undefined) {
+      return false;
+    }
+    const position = attachedPointPosition(first, relation.outlinePosition);
+    if (
+      position === null ||
+      Math.abs(position.x) > MAX_COORDINATE ||
+      Math.abs(position.y) > MAX_COORDINATE
+    ) {
+      return false;
+    }
+    shape.x = position.x;
+    shape.y = position.y;
+    return true;
   }
   if (relation.kind === "label") {
     if (relation.offsetX === undefined || relation.offsetY === undefined) {
@@ -259,7 +359,9 @@ export function updateRelation(document: BoardDocument, shape: Shape): boolean {
     return false;
   }
   if (relation.kind === "intersection" || relation.kind === "bisector") {
-    const origin = findLineIntersection(first, second);
+    const firstIsEdge = hasSourceEdge(shape, 0);
+    const secondIsEdge = hasSourceEdge(shape, 1);
+    const origin = findConstructionIntersection(first, second, firstIsEdge, secondIsEdge);
     if (origin === null) {
       return false;
     }
@@ -268,16 +370,14 @@ export function updateRelation(document: BoardDocument, shape: Shape): boolean {
       shape.y = origin.y;
       return true;
     }
-    // 两条单位方向向量相加得到一条角平分线，反向时改取另一方向
-    const other = getLinePoints(second);
-    const otherLength = Math.hypot(other[1].x - other[0].x, other[1].y - other[0].y);
-    let bisectorX = directionX / length + (other[1].x - other[0].x) / otherLength;
-    let bisectorY = directionY / length + (other[1].y - other[0].y) / otherLength;
-    let bisectorLength = Math.hypot(bisectorX, bisectorY);
+    // 从顶点沿两条边向外取方向，避免把矩形内角画成外角
+    const firstDirection = bisectorDirection(first, origin, firstIsEdge);
+    const secondDirection = bisectorDirection(second, origin, secondIsEdge);
+    const bisectorX = firstDirection.x + secondDirection.x;
+    const bisectorY = firstDirection.y + secondDirection.y;
+    const bisectorLength = Math.hypot(bisectorX, bisectorY);
     if (bisectorLength < MIN_LENGTH) {
-      bisectorX = directionX / length - (other[1].x - other[0].x) / otherLength;
-      bisectorY = directionY / length - (other[1].y - other[0].y) / otherLength;
-      bisectorLength = Math.hypot(bisectorX, bisectorY);
+      return false;
     }
     setConstructionLine(shape, origin, {
       x: origin.x + (bisectorX / bisectorLength) * CONSTRUCTION_LENGTH,
@@ -320,15 +420,16 @@ export function updateRelations(document: BoardDocument): Set<string> {
   return invalid;
 }
 
-/** 收集删除对象及其所有后续构造，防止保存时留下悬空关系 */
-export function getDeletionIds(document: BoardDocument, selected: string[]): Set<string> {
-  const deleted = new Set(selected);
+/** 收集来源对象和依赖它们的所有构造，供删除和吸附排除使用 */
+export function getDependentIds(document: BoardDocument, selected: string[]): Set<string> {
+  const affected = new Set(selected);
   for (const shape of document.shapes) {
     for (const source of shape.relation.sources) {
-      if (deleted.has(source)) {
-        deleted.add(shape.id);
+      if (affected.has(source)) {
+        affected.add(shape.id);
+        break;
       }
     }
   }
-  return deleted;
+  return affected;
 }

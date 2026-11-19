@@ -1,4 +1,4 @@
-import { getDeletionIds, updateRelations } from "../geometry/geometry";
+import { getDependentIds, updateRelations } from "../geometry/geometry";
 import { compareLayers } from "./model";
 import {
   createShape,
@@ -21,7 +21,7 @@ const COPY_SUFFIX = " 副本";
 
 /** 删除选中对象和依赖它们的构造，返回被删除的对象数量 */
 export function deleteShapes(document: BoardDocument, selectedIds: string[]): number {
-  const deleted = getDeletionIds(document, selectedIds);
+  const deleted = getDependentIds(document, selectedIds);
   const remaining: Shape[] = [];
   for (const shape of document.shapes) {
     if (!deleted.has(shape.id)) {
@@ -174,7 +174,8 @@ export function constructShape(
 export function prepareConstruction(
   document: BoardDocument,
   selected: Shape[],
-  kind: ConstructionTool
+  kind: ConstructionTool,
+  sourceEdges?: ReadonlyMap<Shape, number>
 ): Shape {
   const points: Shape[] = [];
   const lines: Shape[] = [];
@@ -232,6 +233,26 @@ export function prepareConstruction(
   shape.stroke = CONSTRUCTION_COLOR;
   shape.fill = "none";
   shape.relation = { kind: kind, sources: sources };
+  if (sourceEdges !== undefined && sourceEdges.size > 0) {
+    const relationEdges: (number | null)[] = [];
+    let hasEdge = false;
+    // 关系总是先写线、再写点，同一图形的不同边也各占一个位置
+    for (const line of lines) {
+      const edge = sourceEdges.get(line);
+      if (edge === undefined) {
+        relationEdges.push(null);
+      } else {
+        relationEdges.push(edge);
+        hasEdge = true;
+      }
+    }
+    if (hasEdge) {
+      while (relationEdges.length < sources.length) {
+        relationEdges.push(null);
+      }
+      shape.relation.sourceEdges = relationEdges;
+    }
+  }
   shape.locked = true;
   if (shape.kind === "line") {
     shape.lineType = "straight";

@@ -27,7 +27,7 @@ export function acceptsConstructionSource(
   candidate: Shape
 ): boolean {
   for (const shape of selected) {
-    if (shape.id === candidate.id) {
+    if (shape === candidate) {
       return false;
     }
   }
@@ -47,7 +47,11 @@ export function acceptsConstructionSource(
 }
 
 /** 检查选区能否构造，文字等无关对象不参与批量配对 */
-export function validConstructionSources(kind: ConstructionTool, selected: Shape[]): boolean {
+export function validConstructionSources(
+  kind: ConstructionTool,
+  selected: Shape[],
+  includesEdges: boolean = false
+): boolean {
   let points = 0;
   let lines = 0;
   for (const shape of selected) {
@@ -61,7 +65,7 @@ export function validConstructionSources(kind: ConstructionTool, selected: Shape
     return points === 2;
   }
   if (kind === "bisector") {
-    return lines === 2;
+    return lines === 2 || (includesEdges && lines > 2);
   }
   if (kind === "midpoint") {
     return lines > 0;
