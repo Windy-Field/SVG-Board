@@ -96,8 +96,7 @@ const TOOLS: ToolDefinition[] = [
   { tool: "function", label: "函数绘制", icon: "chart-spline" },
   { tool: "fit", label: "点拟合", icon: "chart-scatter" },
   { tool: "pencil", label: "自由画笔", icon: "pencil" },
-  { tool: "text", label: "文字", icon: "type" },
-  { tool: "vertical-text", label: "纵向文本框", icon: "text-cursor-input" }
+  { tool: "text", label: "文字", icon: "type" }
 ];
 
 /** 更新左下角的北京时间，使用 time 元素同时保留机器可读的时间 */
@@ -232,11 +231,7 @@ export function mountInterface(): void {
   const app = getElement("app");
   let toolButtons = "";
   for (const definition of TOOLS) {
-    if (
-      definition.tool === "arrow" ||
-      definition.tool === "connector" ||
-      definition.tool === "vertical-text"
-    ) {
+    if (definition.tool === "arrow" || definition.tool === "connector") {
       continue;
     }
     let group = "";
