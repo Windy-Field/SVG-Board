@@ -325,7 +325,18 @@ export function mountInterface(): void {
         <div class="inspector-foot">SVG-Board</div>
       </aside>
     </main>
-    <footer class="statusbar"><div class="status-left"><div class="release-info"><time id="current-time" aria-label="当前北京时间" title="北京时间（Asia/Shanghai）"></time><span id="app-version" aria-label="应用版本">v${packageInfo.version}</span></div><div class="object-status"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div></div><span id="board-size" class="board-size">${BOARD_WIDTH} × ${BOARD_HEIGHT}</span><div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div></footer>
+    <footer class="statusbar">
+      <div class="status-left">
+        <span>Octorange</span>
+        <div class="release-info">
+          <span id="app-version" aria-label="应用版本">v${packageInfo.version}</span>
+          <time id="current-time" aria-label="当前北京时间" title="北京时间（Asia/Shanghai）"></time>
+        </div>
+        <div class="object-status"><span class="status-dot"></span><span id="object-count">0 个对象</span><span id="selection-count"></span></div>
+      </div>
+      <span id="board-size" class="board-size">${BOARD_WIDTH} × ${BOARD_HEIGHT}</span>
+      <div class="zoom-controls">${commandButton("zoom-out", "缩小画布", "minus")}<button type="button" id="zoom-value" data-action="reset-zoom" title="恢复 100%">100%</button>${commandButton("zoom-in", "放大画布", "plus")}${commandButton("fit", "适应画布", "maximize")}</div>
+    </footer>
     <div id="message" class="message" role="status" hidden></div>
     <input id="file-input" type="file" accept=".json,.svg" hidden />
     <dialog id="text-dialog"><form id="text-form"><div class="dialog-heading"><h2>编辑文字</h2>${commandButton("close-text", "关闭文字编辑", "x")}</div><label for="text-value">文字内容</label><textarea id="text-value" rows="5" maxlength="${MAX_TEXT_LENGTH}"></textarea><div class="dialog-actions"><button type="button" data-action="close-text">取消</button><button type="submit" class="primary-button">保存文字</button></div></form></dialog>

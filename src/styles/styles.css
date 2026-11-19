@@ -756,13 +756,16 @@ dialog textarea {
     padding: 0 8px;
     gap: 4px;
   }
+  /* 窄屏分行显示署名、版本和时间，避免挤到缩放按钮 */
   .status-left {
-    gap: 6px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
   }
   .release-info {
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: 2px;
   }
   #selection-count {
     display: none;
