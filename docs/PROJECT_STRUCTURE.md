@@ -56,12 +56,13 @@ SVG-Board/
 
 `src/core/` 定义作品在程序中如何保存。画布显示和文件导出都使用这份模型，Fabric 对象负责显示和交互
 
-| 文件                                       | 职责                                                             |
-| :----------------------------------------- | :--------------------------------------------------------------- |
-| [types.ts](../src/core/types.ts)           | 定义作品、图形、工具、几何关系和视口的数据类型                   |
-| [model.ts](../src/core/model.ts)           | 维护共享参数，创建和查找对象，计算边界，提供移动、缩放及历史快照 |
-| [commands.ts](../src/core/commands.ts)     | 执行删除、复制粘贴、对齐、层级调整和几何构造命令                 |
-| [validation.ts](../src/core/validation.ts) | 判断未知输入是否为普通记录对象，供文件和存档校验复用             |
+| 文件                                                       | 职责                                                             |
+| :--------------------------------------------------------- | :--------------------------------------------------------------- |
+| [types.ts](../src/core/types.ts)                           | 定义作品、图形、工具、几何关系和视口的数据类型                   |
+| [model.ts](../src/core/model.ts)                           | 维护共享参数，创建和查找对象，计算边界，提供移动、缩放及历史快照 |
+| [commands.ts](../src/core/commands.ts)                     | 执行删除、复制粘贴、对齐、层级调整和几何构造命令                 |
+| [construction-batch.ts](../src/core/construction-batch.ts) | 批量配对，跳过已有交点，检查容量后一次加入作品                   |
+| [validation.ts](../src/core/validation.ts)                 | 判断未知输入是否为普通记录对象，供文件和存档校验复用             |
 
 应用版本来自 `package.json`。项目文件的格式版本在作品模型中维护，两者用途不同
 
@@ -100,6 +101,7 @@ SVG-Board/
 | 文件                                         | 职责                                                     |
 | :------------------------------------------- | :------------------------------------------------------- |
 | [coordinates.ts](../src/math/coordinates.ts) | 转换数学坐标和画布坐标，解析批量坐标输入并检查范围       |
+| [domain.ts](../src/math/domain.ts)           | 校验普通函数和拟合函数的端点，区分有限端点与无穷端点     |
 | [expressions.ts](../src/math/expressions.ts) | 检查并编译允许的单变量表达式，计算指定横坐标对应的函数值 |
 | [plots.ts](../src/math/plots.ts)             | 计算多项式拟合、采样函数路径，并生成曲线旁的解析式文字   |
 
@@ -131,6 +133,9 @@ SVG-Board/
 | [menu-keyboard.ts](../src/ui/menu-keyboard.ts)       | 处理菜单中的方向键、Home 和 End 焦点移动                            |
 | [math-dialogs.ts](../src/ui/math-dialogs.ts)         | 读取坐标点、函数和拟合输入，计算成功后一次性加入作品                |
 | [description.ts](../src/ui/description.ts)           | 更新 Markdown 项目说明，使用 Marked 解析并由 DOMPurify 过滤预览内容 |
+| [export-dialog.ts](../src/ui/export-dialog.ts)       | 管理导出预览、下载状态和窗口内的错误提示                            |
+| [feedback.ts](../src/ui/feedback.ts)                 | 显示操作提示，新提示替换旧提示并重新计时                            |
+| [replay.ts](../src/ui/replay.ts)                     | 在独立窗口回放当前作品的编辑快照，不修改原作品                      |
 | [motion.ts](../src/ui/motion.ts)                     | 同步侧栏、按钮状态和画布布局，动画效果由 CSS 控制                   |
 | [branding.ts](../src/ui/branding.ts)                 | 为界面标题和浏览器标签页设置共用图标                                |
 
@@ -143,6 +148,8 @@ SVG-Board/
 | [archive-content.ts](../src/storage/archive-content.ts) | 比较作品内容时统一随机编号，用于识别重复存档                          |
 | [content.ts](../src/storage/content.ts)                 | 计算实际显示边界，保存内容范围和外侧留白，同时保留对象原坐标          |
 | [files.ts](../src/storage/files.ts)                     | 打开项目，生成带项目元数据的 SVG，并下载项目、SVG 或 PNG              |
+| [svg-import.ts](../src/storage/svg-import.ts)           | 将普通 SVG 的简单图元转成可编辑对象，复杂图像保留为整体               |
+| [svg-image.ts](../src/storage/svg-image.ts)             | 将 SVG 源文件转换为浏览器图片地址                                     |
 
 浏览器存档与导出文件是两个保存位置。自动保存和保存按钮写入浏览器存储；下载项目文件时，会保留图形、文字和几何关联，之后可以重新打开
 
@@ -176,24 +183,25 @@ SVG-Board/
 
 ## 测试与文档
 
-| 文件                                                                       | 职责                                           |
-| :------------------------------------------------------------------------- | :--------------------------------------------- |
-| [model.test.ts](../tests/model.test.ts)                                    | 验证模型、对象命令、存档和导出等逻辑           |
-| [math.test.ts](../tests/math.test.ts)                                      | 验证坐标解析、函数、拟合和几何构造             |
-| [snapping.test.ts](../tests/snapping.test.ts)                              | 验证吸附顺序与图形位置计算                     |
-| [style.test.ts](../tests/style.test.ts)                                    | 验证风格检查器能识别禁止的写法和注释问题       |
-| [editor.spec.ts](../tests/browser/editor.spec.ts)                          | 验证编辑器中的基本操作                         |
-| [interaction.spec.ts](../tests/browser/interaction.spec.ts)                | 验证选择、拖动和变换等鼠标交互                 |
-| [workspace.spec.ts](../tests/browser/workspace.spec.ts)                    | 验证工具栏、存档、对象管理、文字配置和几何操作 |
-| [math.spec.ts](../tests/browser/math.spec.ts)                              | 验证数学工具输入、绘图、坐标轴和相关交互       |
-| [offline.spec.ts](../tests/browser/offline.spec.ts)                        | 验证双击入口和离线编辑器                       |
-| [helpers.ts](../tests/browser/helpers.ts)                                  | 提供浏览器测试共用的存档选择和输出路径函数     |
-| [CHANGELOG.md](CHANGELOG.md)                                               | 记录各版本的功能变化与修复                     |
-| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)                           | 记录第三方依赖来源、许可和署名                 |
-| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)                               | 说明项目目录、文件职责和运行流程               |
-| [workspace-empty.png](images/workspace-empty.png)                          | README 中的空白工作台截图                      |
-| [course-flow.svgboard.json](../examples/course-flow.svgboard.json)         | 可以打开并继续编辑的流程图示例                 |
-| [triangle-median.svgboard.json](../examples/triangle-median.svgboard.json) | 保留几何关联的三角形中线示例                   |
+| 文件                                                                       | 职责                                                          |
+| :------------------------------------------------------------------------- | :------------------------------------------------------------ |
+| [model.test.ts](../tests/model.test.ts)                                    | 验证模型、对象命令、存档和导出等逻辑                          |
+| [math.test.ts](../tests/math.test.ts)                                      | 验证坐标解析、函数、拟合和几何构造                            |
+| [snapping.test.ts](../tests/snapping.test.ts)                              | 验证吸附顺序与图形位置计算                                    |
+| [style.test.ts](../tests/style.test.ts)                                    | 验证风格检查器能识别禁止的写法和注释问题                      |
+| [editor.spec.ts](../tests/browser/editor.spec.ts)                          | 验证编辑器中的基本操作                                        |
+| [interaction.spec.ts](../tests/browser/interaction.spec.ts)                | 验证选择、拖动和变换等鼠标交互                                |
+| [workspace.spec.ts](../tests/browser/workspace.spec.ts)                    | 验证工具栏、存档、对象管理、文字配置和几何操作                |
+| [math.spec.ts](../tests/browser/math.spec.ts)                              | 验证数学工具输入、绘图、坐标轴和相关交互                      |
+| [import-replay.spec.ts](../tests/browser/import-replay.spec.ts)            | 验证普通 SVG 导入、复杂图像的导出和恢复，以及回放不会修改作品 |
+| [offline.spec.ts](../tests/browser/offline.spec.ts)                        | 验证双击入口和离线编辑器                                      |
+| [helpers.ts](../tests/browser/helpers.ts)                                  | 提供浏览器测试共用的存档选择和输出路径函数                    |
+| [CHANGELOG.md](CHANGELOG.md)                                               | 记录各版本的功能变化与修复                                    |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)                           | 记录第三方依赖来源、许可和署名                                |
+| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)                               | 说明项目目录、文件职责和运行流程                              |
+| [workspace-empty.png](images/workspace-empty.png)                          | README 中的空白工作台截图                                     |
+| [course-flow.svgboard.json](../examples/course-flow.svgboard.json)         | 可以打开并继续编辑的流程图示例                                |
+| [triangle-median.svgboard.json](../examples/triangle-median.svgboard.json) | 保留几何关联的三角形中线示例                                  |
 
 ## 一次编辑如何完成
 
